@@ -1,0 +1,16 @@
+{
+  "name": "@kismet/worker",
+  "version": "2.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev --config ../infra/wrangler.toml",
+    "build": "wrangler build --config ../infra/wrangler.toml",
+    "deploy": "wrangler deploy --config ../infra/wrangler.toml"
+  },
+  "devDependencies": {
+    "wrangler": "3.78.12",
+    "typescript": "^5.6.3",
+    "@cloudflare/workers-types": "^4.20241011.0"
+  }
+}

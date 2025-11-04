@@ -1,0 +1,35 @@
+name = "kismet-worker"
+main = "../worker/src/index.ts"
+compatibility_date = "2025-10-01"
+
+[placement]
+mode = "smart"
+
+# Durable Object binding
+[[durable_objects.bindings]]
+name = "ROOM_DO"
+class_name = "RoomDO"
+
+# KV Namespace for nonces, XP
+[[kv_namespaces]]
+binding = "KISMET_KV"
+preview_id = "523457d2e5624bbbb069641056ea1200"
+id = "0230f3cd052248749c57a3116298a4ec"
+
+[vars]
+PROTOCOL_VERSION = "1"
+STRICT_MODE = "true"
+TURN_TOKEN_ID = "bc114bb3c441a729ff682ac154e8952f" # Cloudflare TURN Key ID (public). Use wrangler secret for TURN_API_TOKEN.
+
+
+[observability]
+enabled = true
+
+[[migrations]]
+tag = "v1"
+new_classes = ["RoomDO"]
+
+# Provide TURN credentials via secrets:
+#   wrangler secret put TURN_TOKEN_ID
+#   wrangler secret put TURN_API_TOKEN
+# Never commit TURN_API_TOKEN to source control.

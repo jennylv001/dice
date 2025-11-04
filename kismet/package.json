@@ -1,0 +1,22 @@
+{
+  "name": "kismet",
+  "private": true,
+  "version": "2.0.0",
+  "description": "Kismet: Remote dice-dueling with PPoR v1 ROLLSEAL on Cloudflare Free-Tier",
+  "workspaces": [
+    "app",
+    "worker",
+    "shared"
+  ],
+  "scripts": {
+    "install:all": "npm install --workspaces",
+    "dev:worker": "npx wrangler dev --config infra/wrangler.toml",
+    "deploy:worker": "npx wrangler deploy --config infra/wrangler.toml",
+    "dev:app": "npm --workspace @kismet/app run dev",
+    "build:app": "npm --workspace @kismet/app run build",
+    "preview:app": "npm --workspace @kismet/app run preview"
+  },
+  "devDependencies": {
+    "wrangler": "^4.45.3"
+  }
+}

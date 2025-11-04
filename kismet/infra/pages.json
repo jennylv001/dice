@@ -1,0 +1,9 @@
+{
+  "build": {
+    "command": "npm --workspace @kismet/app run build",
+    "cwd": "./"
+  },
+  "deploymentPresets": {
+    "production": {}
+  }
+}

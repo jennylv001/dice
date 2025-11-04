@@ -1,0 +1,13 @@
+TODO:
+- [x] Review dashboard UI components to understand current design
+- [x] Trace frontend API usage to confirm backend connection points
+- [x] Summarize findings and highlight any integration gaps
+- [x] Wire phase/roundHistory data into dashboard UI components
+- [x] Add RTC/media error toasts for user feedback
+- [x] Audit existing layout for UX requirements
+- [x] Implement design foundation (spacing scale, typography, color balance, grid)
+- [x] Update components for hierarchy, semantics, interactions, accessibility
+- [x] Verify consistency, responsiveness, and run build
+- [ ] Ensure functionality unchanged (manual regression and audit)
+- [ ] Build and deploy worker
+- [ ] Build and deploy frontend
