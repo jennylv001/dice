@@ -6,6 +6,7 @@ import { verifyProof } from "./verify.js";
 import type { Proof, RPv1 } from "./types.js";
 import { sha256, b64url } from "../../shared/src/crypto.js";
 import { handleTurnRequest } from "./turn.js";
+import { checkRateLimit, rateLimitResponse, getRateLimitKey, LIMITS } from "./ratelimit.js";
 
 export async function handleApi(req: Request, env: Env) {
   const url = new URL(req.url);
@@ -43,6 +44,12 @@ export async function handleApi(req: Request, env: Env) {
     const roomId = joinMatch[1];
     const { name, role } = (await req.json()) as { name: string; role?: string };
     if (!name) return bad("missing_name");
+    
+    // Rate limit check
+    const rlKey = getRateLimitKey(req, name);
+    const rlResult = await checkRateLimit(env.KISMET_KV, `join_room:${rlKey}`, LIMITS.JOIN_ROOM);
+    if (!rlResult.allowed) return rateLimitResponse(rlResult.resetAt);
+    
     const id = env.ROOM_DO.idFromName(roomId);
     const stub = env.ROOM_DO.get(id);
     const joinRes = await stub.fetch(new Request(new URL("/do/join", req.url), {
@@ -71,6 +78,12 @@ export async function handleApi(req: Request, env: Env) {
   if (url.pathname === "/api/start-roll" && req.method === "POST") {
     const { roomId, userId, token } = (await req.json()) as { roomId: string; userId: string; token: string };
     if (!roomId || !userId || !token) return bad("missing_params");
+    
+    // Rate limit check
+    const rlKey = getRateLimitKey(req, userId);
+    const rlResult = await checkRateLimit(env.KISMET_KV, `start_roll:${rlKey}`, LIMITS.START_ROLL);
+    if (!rlResult.allowed) return rateLimitResponse(rlResult.resetAt);
+    
     const authOk = await authPlayer(env, roomId, userId, token, req.url);
     if (!authOk) return bad("unauthorized", 403);
     const nonce_session = crypto.getRandomValues(new Uint8Array(16));
@@ -97,6 +110,12 @@ export async function handleApi(req: Request, env: Env) {
     const userId = url.searchParams.get("userId") || "";
     const token = url.searchParams.get("token") || "";
     if (!roomId || !userId || !token) return bad("missing_params");
+    
+    // Rate limit check
+    const rlKey = getRateLimitKey(req, userId);
+    const rlResult = await checkRateLimit(env.KISMET_KV, `submit_roll:${rlKey}`, LIMITS.SUBMIT_ROLL);
+    if (!rlResult.allowed) return rateLimitResponse(rlResult.resetAt);
+    
     const authOk = await authPlayer(env, roomId, userId, token, req.url);
     if (!authOk) return bad("unauthorized", 403);
     const round_id = await deriveRoundId(proof.nonces.session);
