@@ -113,6 +113,7 @@ export type WSFromClient =
   | { t: "join"; p: JoinPayload }
   | { t: "ready" }
   | { t: "start_verification" }
+  | { t: "rtc_want"; p: { enable: boolean } }
   | { t: "rtc_offer"; p: { sdp: string } }
   | { t: "rtc_answer"; p: { sdp: string } }
   | { t: "rtc_ice"; p: { candidate: RTCIceCandidateInit } }
@@ -124,6 +125,7 @@ export type WSFromServer =
   | { t: "phase"; p: { phase: GamePhase; userId?: string } }
   | { t: "opp_result"; p: RPv1 }
   | { t: "opp_thumb"; p: { t_ms: number; luma64x36_b64: string } }
+  | { t: "rtc_want"; p: { from: string; enable: boolean } }
   | { t: "rtc_offer"; p: { from: string; sdp: string } }
   | { t: "rtc_answer"; p: { from: string; sdp: string } }
   | { t: "rtc_ice"; p: { from: string; candidate: RTCIceCandidateInit } }
