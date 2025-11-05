@@ -85,6 +85,8 @@ export type PlayerState = {
   xp: number;
   diceReady: boolean;
   connected: boolean;
+  avatar?: string;  // Avatar emoji or identifier
+  level?: number;   // Calculated from XP
 };
 
 export type RoomStatePayload = {

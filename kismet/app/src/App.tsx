@@ -12,6 +12,9 @@ type User = {
   email?: string;
   token?: string;
   isGuest?: boolean;
+  avatar?: string;
+  xp?: number;
+  level?: number;
 };
 
 type AppScreen = "auth" | "game-select" | "lobby" | "duel";
@@ -29,6 +32,9 @@ export default function App() {
     const userId = localStorage.getItem("user_id");
     const userName = localStorage.getItem("user_name");
     const email = localStorage.getItem("user_email");
+    const avatar = localStorage.getItem("user_avatar");
+    const xp = parseInt(localStorage.getItem("user_xp") || "0");
+    const level = parseInt(localStorage.getItem("user_level") || "1");
     const isGuest = localStorage.getItem("guest_mode") === "true";
 
     if (userId && userName) {
@@ -37,14 +43,19 @@ export default function App() {
         name: userName, 
         email: email || undefined, 
         token: token || undefined,
+        avatar: avatar || "🎲",
+        xp,
+        level,
         isGuest 
       });
       setScreen("game-select");
     }
   }, []);
 
-  const handleAuth = useCallback((authUser: { id: string; name: string; email: string; token: string }) => {
-    setUser({ ...authUser, isGuest: false });
+  const handleAuth = useCallback((authUser: { id: string; name: string; email: string; token: string; avatar: string }) => {
+    const xp = parseInt(localStorage.getItem("user_xp") || "0");
+    const level = parseInt(localStorage.getItem("user_level") || "1");
+    setUser({ ...authUser, isGuest: false, xp, level });
     setScreen("game-select");
   }, []);
 
@@ -109,7 +120,13 @@ export default function App() {
           <ThemeToggle />
           {user && (
             <>
-              <span className="user-name" title={user.email}>{user.name}{user.isGuest ? " (Guest)" : ""}</span>
+              <div className="user-badge">
+                <span className="user-avatar">{user.avatar || "🎲"}</span>
+                <div className="user-info">
+                  <span className="user-name-display">{user.name}{user.isGuest ? " (Guest)" : ""}</span>
+                  {!user.isGuest && <span className="user-level">Level {user.level || 1} • {user.xp || 0} XP</span>}
+                </div>
+              </div>
               {screen === "duel" ? (
                 <button className="btn ghost" type="button" onClick={handleLeave} aria-label="Leave room">
                   Forfeit Match

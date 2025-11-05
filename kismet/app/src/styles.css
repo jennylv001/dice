@@ -2409,3 +2409,140 @@ img, video {
     display: none;
   }
 }
+
+/* =================================================================
+   AVATAR SELECTOR
+   ================================================================= */
+.avatar-selector {
+  position: relative;
+  margin-bottom: var(--space-5);
+}
+
+.avatar-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  background: var(--neutral);
+  border: 1px solid var(--neutral-hover);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.avatar-button:hover {
+  background: var(--neutral-hover);
+  border-color: var(--panel-glow);
+}
+
+.avatar-display {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.avatar-label {
+  flex: 1;
+  text-align: left;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.avatar-grid {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--panel-elevated);
+  border: 1px solid var(--neutral-hover);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xl);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.avatar-option {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  background: var(--neutral);
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.avatar-option:hover {
+  background: var(--neutral-hover);
+  transform: scale(1.1);
+}
+
+.avatar-option.selected {
+  border-color: var(--accent);
+  background: var(--panel-glow);
+}
+
+/* =================================================================
+   USER PROFILE DISPLAY
+   ================================================================= */
+.user-badge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--neutral);
+  border-radius: var(--radius-full);
+  transition: all var(--transition-base);
+}
+
+.user-badge:hover {
+  background: var(--neutral-hover);
+}
+
+.user-avatar {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.user-name-display {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.user-level {
+  font-size: var(--font-size-xs);
+  color: var(--muted-2);
+}
+
+/* Player avatar in duel view */
+.player-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  font-size: 1.5rem;
+  background: var(--panel-elevated);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-sm);
+}
+
+.opponent-avatar {
+  border-color: var(--accent-2);
+}
+

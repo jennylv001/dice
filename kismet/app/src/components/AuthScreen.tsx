@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import { Toast } from "./Toast";
+import AvatarSelector from "./AvatarSelector";
 
 type AuthMode = "login" | "signup";
 
 type Props = {
-  onAuth: (user: { id: string; name: string; email: string; token: string }) => void;
+  onAuth: (user: { id: string; name: string; email: string; token: string; avatar: string }) => void;
   onSkip?: () => void;
 };
 
@@ -13,6 +14,7 @@ export default function AuthScreen({ onAuth, onSkip }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [avatar, setAvatar] = useState("🎲");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,7 +37,12 @@ export default function AuthScreen({ onAuth, onSkip }: Props) {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, name: mode === "signup" ? name : undefined })
+        body: JSON.stringify({ 
+          email, 
+          password, 
+          name: mode === "signup" ? name : undefined,
+          avatar: mode === "signup" ? avatar : undefined
+        })
       });
 
       if (!response.ok) {
@@ -45,14 +52,23 @@ export default function AuthScreen({ onAuth, onSkip }: Props) {
 
       const data = await response.json();
       
-      // Store token in localStorage
+      // Store profile in localStorage
       localStorage.setItem("auth_token", data.token);
       localStorage.setItem("user_id", data.userId);
       localStorage.setItem("user_name", data.name);
       localStorage.setItem("user_email", data.email);
+      localStorage.setItem("user_avatar", data.avatar || avatar);
+      localStorage.setItem("user_xp", data.xp || "0");
+      localStorage.setItem("user_level", data.level || "1");
 
       Toast.push("success", mode === "login" ? "Welcome back!" : "Account created successfully!");
-      onAuth({ id: data.userId, name: data.name, email: data.email, token: data.token });
+      onAuth({ 
+        id: data.userId, 
+        name: data.name, 
+        email: data.email, 
+        token: data.token,
+        avatar: data.avatar || avatar
+      });
     } catch (err: any) {
       Toast.push("error", err.message || "Authentication failed");
     } finally {
@@ -105,19 +121,22 @@ export default function AuthScreen({ onAuth, onSkip }: Props) {
 
           <form onSubmit={handleSubmit} className="auth-form">
             {mode === "signup" && (
-              <div className="field">
-                <label htmlFor="name" className="label">Name</label>
-                <input
-                  id="name"
-                  type="text"
-                  className="input"
-                  placeholder="Dice Master"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  required={mode === "signup"}
-                  autoComplete="name"
-                />
-              </div>
+              <>
+                <div className="field">
+                  <label htmlFor="name" className="label">Name</label>
+                  <input
+                    id="name"
+                    type="text"
+                    className="input"
+                    placeholder="Dice Master"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    required={mode === "signup"}
+                    autoComplete="name"
+                  />
+                </div>
+                <AvatarSelector selected={avatar} onSelect={setAvatar} />
+              </>
             )}
 
             <div className="field">

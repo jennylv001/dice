@@ -141,7 +141,7 @@ export async function handleApi(req: Request, env: Env) {
 
   // Authentication endpoints (guest mode - no actual storage, uses client tokens)
   if (url.pathname === "/api/auth/signup" && req.method === "POST") {
-    const { email, password, name } = (await req.json()) as { email: string; password: string; name: string };
+    const { email, password, name, avatar } = (await req.json()) as { email: string; password: string; name: string; avatar?: string };
     if (!email || !password || !name) return bad("missing_fields");
     
     // Simple validation
@@ -152,9 +152,17 @@ export async function handleApi(req: Request, env: Env) {
     const token = await generateAuthToken(userId);
     
     // For free-tier: Store minimal user data in KV with TTL
-    await kvPutTTL(env.KISMET_KV, `user:${userId}`, { email, name, created: Date.now() }, 60 * 60 * 24 * 365); // 1 year
+    const userData = { 
+      email, 
+      name, 
+      avatar: avatar || "🎲",
+      xp: 0,
+      level: 1,
+      created: Date.now() 
+    };
+    await kvPutTTL(env.KISMET_KV, `user:${userId}`, userData, 60 * 60 * 24 * 365); // 1 year
     
-    return okJson({ userId, name, email, token });
+    return okJson({ userId, name, email, avatar: userData.avatar, xp: 0, level: 1, token });
   }
 
   if (url.pathname === "/api/auth/login" && req.method === "POST") {
@@ -169,7 +177,13 @@ export async function handleApi(req: Request, env: Env) {
     // Look up user by email (simplified - real impl would use proper index)
     const userName = email.split("@")[0]; // Simple fallback
     
-    return okJson({ userId, name: userName, email, token });
+    // Try to fetch existing user data
+    const existingUser = await kvGet<any>(env.KISMET_KV, `user:${userId}`);
+    const avatar = existingUser?.avatar || "🎲";
+    const xp = existingUser?.xp || 0;
+    const level = existingUser?.level || 1;
+    
+    return okJson({ userId, name: userName, email, avatar, xp, level, token });
   }
 
   return new Response("not found", { status: 404 });
