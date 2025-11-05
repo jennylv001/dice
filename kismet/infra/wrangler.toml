@@ -19,7 +19,9 @@ id = "0230f3cd052248749c57a3116298a4ec"
 [vars]
 PROTOCOL_VERSION = "1"
 STRICT_MODE = "true"
-TURN_TOKEN_ID = "bc114bb3c441a729ff682ac154e8952f" # Cloudflare TURN Key ID (public). Use wrangler secret for TURN_API_TOKEN.
+# TURN credentials removed from config for security
+# Set via: wrangler secret put TURN_TOKEN_ID
+# Set via: wrangler secret put TURN_API_TOKEN
 
 
 [observability]

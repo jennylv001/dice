@@ -1825,3 +1825,83 @@ img, video {
     justify-content: flex-start;
   }
 }
+
+/* Connection Status Indicator */
+.connection-status {
+  position: fixed;
+  top: 70px;
+  right: 16px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 99;
+  animation: slideIn 0.3s ease-out;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.connection-status .status-icon {
+  font-size: 16px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.status-connecting {
+  background: rgba(97,218,251,0.15);
+  border: 1px solid rgba(97,218,251,0.4);
+  color: var(--accent-2);
+}
+
+.status-reconnecting {
+  background: rgba(255,205,112,0.15);
+  border: 1px solid rgba(255,205,112,0.4);
+  color: var(--warn);
+}
+
+.status-disconnected {
+  background: rgba(255,107,107,0.15);
+  border: 1px solid rgba(255,107,107,0.4);
+  color: var(--error);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Loading states */
+.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
