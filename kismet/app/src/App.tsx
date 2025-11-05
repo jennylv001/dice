@@ -151,6 +151,7 @@ export default function App() {
             <RoomLobby 
               onEnter={handleEnter}
               onBack={handleBackToGameSelect}
+              gameMode={selectedGameMode || undefined}
             />
           )}
           {screen === "duel" && session && (

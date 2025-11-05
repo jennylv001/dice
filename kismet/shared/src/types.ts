@@ -101,6 +101,8 @@ export type RoomStatePayload = {
   phase: GamePhase;
   roundHistory: RoundHistory[];
   turnStartTime: number | null;
+  gameMode?: string;  // Game mode ID (quick-duel, craps, etc.)
+  winner?: string;    // Winner userId when game completes
 };
 
 export type ApiStartRollRes = {

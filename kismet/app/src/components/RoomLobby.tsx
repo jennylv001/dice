@@ -23,11 +23,12 @@ export type LobbySession = {
 type Props = {
   onEnter: (session: LobbySession) => void;
   onBack?: () => void;
+  gameMode?: string;  // Selected game mode ID
 };
 
 type LobbyTab = "create" | "join" | "discover";
 
-export default function RoomLobby({ onEnter, onBack }: Props) {
+export default function RoomLobby({ onEnter, onBack, gameMode }: Props) {
   const [activeTab, setActiveTab] = useState<LobbyTab>("create");
   const [hostName, setHostName] = useState("");
   const [roomIdInput, setRoomIdInput] = useState("");
