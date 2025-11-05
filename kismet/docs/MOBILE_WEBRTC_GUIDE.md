@@ -1,38 +1,43 @@
-# iPhone WebRTC & WebSocket Integration Guide
+# Mobile WebRTC & WebSocket Integration Guide
 
 ## Executive Summary
 
-This document provides comprehensive guidance for ensuring robust WebRTC and WebSocket connections on iOS devices (iPhone/iPad), with specific focus on Safari's implementation quirks, iOS permissions, and network resilience strategies.
+This document provides comprehensive guidance for ensuring robust WebRTC and WebSocket connections on mobile devices (iPhone, Android, Tecno, and other smartphones), with specific focus on browser implementation quirks, mobile-specific permissions, and network resilience strategies for all platforms.
 
-## iOS/Safari-Specific Considerations
+## Cross-Platform Mobile Considerations
 
 ### 1. WebRTC Support Matrix
 
-**iOS Safari WebRTC Capabilities:**
+**Mobile Browser WebRTC Capabilities:**
 
-| Feature | iOS 11-13 | iOS 14-15 | iOS 16+ | Notes |
-|---------|-----------|-----------|---------|-------|
-| getUserMedia (camera) | ✅ | ✅ | ✅ | Requires HTTPS |
-| getUserMedia (mic) | ✅ | ✅ | ✅ | Requires HTTPS |
-| RTCPeerConnection | ✅ | ✅ | ✅ | STUN/TURN support |
-| RTCDataChannel | ✅ | ✅ | ✅ | For non-media data |
-| Screen Capture | ❌ | ❌ | ✅ | iOS 16+ only |
-| Multiple cameras | ⚠️ | ✅ | ✅ | Limited on older devices |
-| H.264 codec | ✅ | ✅ | ✅ | Preferred over VP8/VP9 |
-| WebSocket over TLS | ✅ | ✅ | ✅ | WSS required |
+| Feature | iOS Safari 14+ | Chrome Android 90+ | Samsung Internet | Other Mobile | Notes |
+|---------|----------------|-------------------|------------------|--------------|-------|
+| getUserMedia (camera) | ✅ | ✅ | ✅ | ✅ | Requires HTTPS on all |
+| getUserMedia (mic) | ✅ | ✅ | ✅ | ✅ | Requires HTTPS on all |
+| RTCPeerConnection | ✅ | ✅ | ✅ | ⚠️ | STUN/TURN support varies |
+| RTCDataChannel | ✅ | ✅ | ✅ | ✅ | For non-media data |
+| Screen Capture | iOS 16+ | ✅ | ✅ | ⚠️ | Limited on iOS |
+| Multiple cameras | ✅ | ✅ | ✅ | ⚠️ | Device dependent |
+| H.264 codec | ✅ | ✅ | ✅ | ✅ | Universal support |
+| VP8/VP9 codec | ⚠️ | ✅ | ✅ | ⚠️ | Better on Android |
+| WebSocket over TLS | ✅ | ✅ | ✅ | ✅ | WSS required |
 
-### 2. Permission Handling
+**Platform-Specific Notes:**
+- **iOS Safari**: Strictest permissions model, requires user gestures
+- **Chrome Android**: Most standards-compliant, excellent codec support
+- **Samsung Internet**: Based on Chromium, similar to Chrome Android
+- **Tecno/Infinix/Generic Android**: Usually Chrome-based, varies by Android version
 
-**Camera/Microphone Permissions:**
+### 2. Permission Handling (Universal)
 
 ```typescript
-// Best practice: Request permissions with user context
+// Best practice: Request permissions with user context (works across all mobile platforms)
 async function requestMediaPermissions(videoConfig: MediaTrackConstraints) {
   try {
-    // iOS requires specific constraints to avoid permission denial
+    // Universal constraints that work on iOS, Android, and other platforms
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: { ideal: "environment" },  // Rear camera
+        facingMode: { ideal: "environment" },  // Rear camera (all platforms)
         width: { ideal: 1280, max: 1920 },
         height: { ideal: 720, max: 1080 },
         frameRate: { ideal: 30, max: 60 }
@@ -45,14 +50,17 @@ async function requestMediaPermissions(videoConfig: MediaTrackConstraints) {
       }
     });
     
-    // iOS Safari: Permissions persist until browser restart or cache clear
+    // Permissions persist differently per platform:
+    // - iOS Safari: Until browser restart or cache clear
+    // - Chrome Android: Until explicitly revoked in site settings
+    // - Samsung Internet: Until revoked in permissions
     return stream;
   } catch (error) {
     if (error.name === "NotAllowedError") {
-      // User denied permission - show instructions to enable in Settings
+      // User denied permission - show platform-specific instructions
       return handlePermissionDenied();
     } else if (error.name === "NotFoundError") {
-      // Device has no camera (rare on iPhone)
+      // Device has no camera
       return handleNoCamera();
     }
     throw error;
@@ -60,18 +68,34 @@ async function requestMediaPermissions(videoConfig: MediaTrackConstraints) {
 }
 
 function handlePermissionDenied(): void {
-  // iOS-specific guidance
+  // Detect platform and show appropriate guidance
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const isAndroid = /Android/.test(navigator.userAgent);
+  
+  let instructions = "To play Kismet, enable camera access:\n\n";
+  
+  if (isIOS) {
+    instructions += "1. Open Settings\n" +
+                   "2. Scroll to Safari\n" +
+                   "3. Tap Camera\n" +
+                   "4. Select 'Allow'\n\n" +
+                   "Then refresh this page.";
+  } else if (isAndroid) {
+    instructions += "1. Tap the lock/info icon in address bar\n" +
+                   "2. Tap 'Permissions'\n" +
+                   "3. Allow Camera access\n\n" +
+                   "Then refresh this page.";
+  } else {
+    instructions += "1. Check your browser's site settings\n" +
+                   "2. Allow camera access for this site\n" +
+                   "3. Refresh this page";
+  }
+  
   showDialog({
     title: "Camera Access Required",
-    message: "To play Kismet, enable camera access:\n\n" +
-             "1. Open iPhone Settings\n" +
-             "2. Scroll to Safari\n" +
-             "3. Tap Camera\n" +
-             "4. Select 'Allow'\n\n" +
-             "Then refresh this page.",
+    message: instructions,
     actions: [
-      { label: "Open Settings", url: "app-settings:" },  // Deep link (may not work)
-      { label: "Later", dismissible: true }
+      { label: "OK", dismissible: true }
     ]
   });
 }
@@ -80,11 +104,12 @@ function handlePermissionDenied(): void {
 **Device Motion/Orientation (IMU):**
 
 ```typescript
-// iOS 13+ requires explicit permission for devicemotion events
+// iOS 13+ and some Android browsers require explicit permission for devicemotion events
 async function requestMotionPermission(): Promise<boolean> {
+  // Check if permission API exists (iOS 13+ and some modern Android browsers)
   if (typeof DeviceMotionEvent !== "undefined" && 
       typeof (DeviceMotionEvent as any).requestPermission === "function") {
-    // iOS 13+ requires user gesture to trigger permission request
+    // iOS 13+ and select Android browsers require user gesture to trigger permission request
     try {
       const response = await (DeviceMotionEvent as any).requestPermission();
       return response === "granted";
