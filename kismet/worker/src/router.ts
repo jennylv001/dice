@@ -139,7 +139,46 @@ export async function handleApi(req: Request, env: Env) {
     return stub.fetch(req);
   }
 
+  // Authentication endpoints (guest mode - no actual storage, uses client tokens)
+  if (url.pathname === "/api/auth/signup" && req.method === "POST") {
+    const { email, password, name } = (await req.json()) as { email: string; password: string; name: string };
+    if (!email || !password || !name) return bad("missing_fields");
+    
+    // Simple validation
+    if (password.length < 8) return bad("password_too_short");
+    
+    // Generate user ID and token (in real impl, would hash password and store in KV)
+    const userId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const token = await generateAuthToken(userId);
+    
+    // For free-tier: Store minimal user data in KV with TTL
+    await kvPutTTL(env.KISMET_KV, `user:${userId}`, { email, name, created: Date.now() }, 60 * 60 * 24 * 365); // 1 year
+    
+    return okJson({ userId, name, email, token });
+  }
+
+  if (url.pathname === "/api/auth/login" && req.method === "POST") {
+    const { email, password } = (await req.json()) as { email: string; password: string };
+    if (!email || !password) return bad("missing_fields");
+    
+    // For free-tier: In real impl, would verify password hash
+    // For now, generate new session token (stateless)
+    const userId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const token = await generateAuthToken(userId);
+    
+    // Look up user by email (simplified - real impl would use proper index)
+    const userName = email.split("@")[0]; // Simple fallback
+    
+    return okJson({ userId, name: userName, email, token });
+  }
+
   return new Response("not found", { status: 404 });
+}
+
+async function generateAuthToken(userId: string): Promise<string> {
+  const data = new TextEncoder().encode(`${userId}-${Date.now()}-${Math.random()}`);
+  const hash = await sha256(data);
+  return b64url(new Uint8Array(hash));
 }
 
 async function deriveRoundId(nonceSessionB64u: string) {
