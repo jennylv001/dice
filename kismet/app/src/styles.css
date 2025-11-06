@@ -111,6 +111,10 @@
   --font-size-lg: clamp(1.333rem, 1.28rem + 0.35vw, 1.5rem);    /* 21-24px */
   --font-size-xl: clamp(1.777rem, 1.68rem + 0.5vw, 2rem);       /* 28-32px */
   --font-size-2xl: clamp(2.369rem, 2.2rem + 0.7vw, 2.667rem);   /* 38-43px */
+  /* Added small/medium/large utility sizes used elsewhere */
+  --font-size-200: clamp(0.8125rem, 0.80rem + 0.10vw, 0.875rem);  /* ~13–14px */
+  --font-size-300: clamp(0.9375rem, 0.90rem + 0.15vw, 1rem);      /* ~15–16px */
+  --font-size-500: clamp(1.25rem, 1.20rem + 0.25vw, 1.375rem);    /* ~20–22px */
   --line-height-tight: 1.25;
   --line-height-snug: 1.375;
   --line-height-normal: 1.5;
@@ -2349,13 +2353,14 @@ img, video {
   justify-content: center;
 }
 
-.btn.ghost {
+/* NOTE: renamed to avoid overriding the original .btn.ghost */
+.btn.ghost-neutral {
   background: transparent;
   border: 1px solid var(--neutral);
   color: var(--text-secondary);
 }
 
-.btn.ghost:hover {
+.btn.ghost-neutral:hover {
   background: var(--neutral);
   border-color: var(--neutral-hover);
   color: var(--text);
@@ -2380,7 +2385,6 @@ img, video {
   color: var(--muted-2);
   font-size: var(--font-size-xs);
 }
-
 
 /* =================================================================
    TOPBAR ENHANCEMENTS
@@ -2546,7 +2550,6 @@ img, video {
   border-color: var(--accent-2);
 }
 
-
 /* =================================================================
    OPPONENT PANE ENHANCEMENTS
    ================================================================= */
@@ -2571,34 +2574,18 @@ img, video {
    SMOOTH PAGE TRANSITIONS
    ================================================================= */
 @keyframes glideIn {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes glideOut {
-  from {
-    opacity: 1;
-    transform: translateX(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(-20px); }
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; } 
+  to { opacity: 1; }
 }
 
 .main-grid {
@@ -2712,20 +2699,9 @@ img, video {
   letter-spacing: var(--letter-spacing-wide);
 }
 
-.room-status.waiting {
-  color: var(--warning);
-  background: rgba(255, 184, 77, 0.15);
-}
-
-.room-status.active {
-  color: var(--success);
-  background: rgba(45, 229, 168, 0.15);
-}
-
-.room-status.full {
-  color: var(--muted);
-  background: var(--neutral);
-}
+.room-status.waiting { color: var(--warning); background: rgba(255, 184, 77, 0.15); }
+.room-status.active { color: var(--success); background: rgba(45, 229, 168, 0.15); }
+.room-status.full { color: var(--muted); background: var(--neutral); }
 
 .room-status-dot {
   width: 6px;
@@ -2753,15 +2729,8 @@ img, video {
   margin-bottom: var(--space-2);
 }
 
-.room-host-avatar {
-  font-size: 1.5rem;
-}
-
-.room-host-name {
-  color: var(--text);
-  font-weight: 600;
-  font-size: var(--font-size-sm);
-}
+.room-host-avatar { font-size: 1.5rem; }
+.room-host-name { color: var(--text); font-weight: 600; font-size: var(--font-size-sm); }
 
 .room-meta {
   display: flex;
@@ -2777,10 +2746,7 @@ img, video {
   gap: var(--space-1);
 }
 
-.room-actions {
-  position: relative;
-  z-index: 1;
-}
+.room-actions { position: relative; z-index: 1; }
 
 .empty-state {
   grid-column: 1 / -1;
@@ -2804,7 +2770,6 @@ img, video {
   font-size: var(--font-size-sm);
   color: var(--muted-2);
 }
-
 
 /* =================================================================
    GAME RESULTS OVERLAY
@@ -2863,9 +2828,7 @@ img, video {
   font-weight: 600;
 }
 
-.results-body {
-  padding: var(--space-6);
-}
+.results-body { padding: var(--space-6); }
 
 .results-reason {
   text-align: center;
@@ -2929,7 +2892,75 @@ img, video {
   border-top: 1px solid var(--neutral);
 }
 
-.results-actions .btn {
-  flex: 1;
+.results-actions .btn { flex: 1; }
+
+/* =================================================================
+   CONNECTION STATUS INDICATOR (merged & de-conflicted)
+   ================================================================= */
+.connection-status {
+  position: fixed;
+  top: 70px;
+  right: 16px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 99;
+  animation: slideIn 0.3s ease-out;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 
+.connection-status .status-icon {
+  font-size: 16px;
+  animation: pulseSoft 2s ease-in-out infinite;
+}
+
+.status-connecting {
+  background: rgba(97,218,251,0.15);
+  border: 1px solid rgba(97,218,251,0.4);
+  color: var(--accent-2);
+}
+
+.status-reconnecting {
+  background: rgba(255,205,112,0.15);
+  border: 1px solid rgba(255,205,112,0.4);
+  color: var(--warning); /* fixed from --warn */
+}
+
+.status-disconnected {
+  background: rgba(255,107,107,0.15);
+  border: 1px solid rgba(255,107,107,0.4);
+  color: var(--error);
+}
+
+@keyframes slideIn {
+  from { transform: translateX(400px); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+
+/* renamed to avoid clobbering existing @keyframes pulse */
+@keyframes pulseSoft {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+
+/* Loading states */
+.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }

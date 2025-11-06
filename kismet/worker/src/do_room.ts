@@ -305,6 +305,18 @@ export class RoomDO {
     const player = this.players.get(playerId);
     if (!player) return;
 
+    // Handle ping/pong for heartbeat
+    if (msg.t === "ping") {
+      const client = this.clients.get(playerId);
+      if (client) {
+        try {
+          client.ws.send(JSON.stringify({ t: "pong" }));
+        } catch {}
+      }
+      player.lastSeen = Date.now();
+      return;
+    }
+
     switch (msg.t) {
       case "join": {
         player.spectator = !!msg.p.spectator;

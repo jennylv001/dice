@@ -121,7 +121,8 @@ export type WSFromClient =
   | { t: "rtc_offer"; p: { sdp: string } }
   | { t: "rtc_answer"; p: { sdp: string } }
   | { t: "rtc_ice"; p: { candidate: RTCIceCandidateInit } }
-  | { t: "dice_status"; p: { ready: boolean } };
+  | { t: "dice_status"; p: { ready: boolean } }
+  | { t: "ping" };
 
 export type WSFromServer =
   | { t: "joined"; p: { roomId: string; you: string; opp?: string; spectator?: boolean } }
@@ -135,4 +136,5 @@ export type WSFromServer =
   | { t: "rtc_ice"; p: { from: string; candidate: RTCIceCandidateInit } }
   | { t: "state"; p: RoomStatePayload }
   | { t: "room_stage"; p: { stage: RoomStage } }
-  | { t: "toast"; p: { kind: "info" | "warn" | "error"; text: string } };
+  | { t: "toast"; p: { kind: "info" | "warn" | "error"; text: string } }
+  | { t: "pong" };
