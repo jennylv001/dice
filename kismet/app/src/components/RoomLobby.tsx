@@ -22,11 +22,13 @@ export type LobbySession = {
 
 type Props = {
   onEnter: (session: LobbySession) => void;
+  onBack?: () => void;
+  gameMode?: string;  // Selected game mode ID
 };
 
 type LobbyTab = "create" | "join" | "discover";
 
-export default function RoomLobby({ onEnter }: Props) {
+export default function RoomLobby({ onEnter, onBack, gameMode }: Props) {
   const [activeTab, setActiveTab] = useState<LobbyTab>("create");
   const [hostName, setHostName] = useState("");
   const [roomIdInput, setRoomIdInput] = useState("");
@@ -99,6 +101,11 @@ export default function RoomLobby({ onEnter }: Props) {
   return (
     <section className="card lobby-card" aria-labelledby="lobby-heading">
       <header className="card-header">
+        {onBack && (
+          <button type="button" className="btn ghost" onClick={onBack} style={{ marginBottom: "var(--space-4)" }}>
+            ← Back to Game Selection
+          </button>
+        )}
         <p className="eyebrow">Ready to roll?</p>
         <h1 id="lobby-heading">Start your dice duel</h1>
         <p className="card-sub">Provably fair rolls. Real dice only. Cryptographic seals in milliseconds.</p>

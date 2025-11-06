@@ -16,12 +16,22 @@ export default function OpponentPane({ opponent, lastThumb, lastResult, stage }:
   const imageUrl = lastThumb ? toCanvasData(lastThumb.luma64x36_b64, w, h) : null;
   const title = opponent ? opponent.name : "Awaiting challenger";
   const diceReady = opponent?.diceReady ?? false;
+  const avatar = opponent?.avatar || "🎲";
+  const level = opponent?.level || 1;
 
   return (
     <section className="card opponent-card" aria-live="polite" aria-label="Opponent status">
       <header className="card-header">
-        <p className="eyebrow">Your rival</p>
-        <h2>{title}</h2>
+        <div className="opponent-header-top">
+          <div>
+            <p className="eyebrow">Your rival</p>
+            <div className="opponent-title-row">
+              <span className="opponent-avatar">{avatar}</span>
+              <h2>{title}</h2>
+            </div>
+            {opponent && <p className="card-sub">Level {level} • {opponent.xp || 0} XP</p>}
+          </div>
+        </div>
         {!opponent && <p className="card-sub">Share your table code. The duel awaits a worthy opponent.</p>}
       </header>
       <div className="opponent-body">

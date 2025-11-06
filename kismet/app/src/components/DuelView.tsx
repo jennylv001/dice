@@ -6,8 +6,10 @@ import PhaseIndicator from "./PhaseIndicator";
 import RoundTimeline from "./RoundTimeline";
 import PlayerStats from "./PlayerStats";
 import StageBanner from "./StageBanner";
+import GameResults from "./GameResults";
 import { connectRoomWS } from "../net/ws";
 import { Toast } from "./Toast";
+import { evaluateGame, isGameComplete } from "../rules/gameRules";
 import type { LobbySession } from "./RoomLobby";
 import type { PlayerState, RoomStatePayload, WSFromServer, RoomStage } from "../../../shared/src/types.js";
 import { GamePhase } from "../../../shared/src/types.js";
@@ -27,6 +29,7 @@ export default function DuelView({ session, roomState, onRoomState, onLeave }: P
   const [thumb, setThumb] = useState<{ t_ms: number; luma64x36_b64: string } | null>(null);
   const [localDiceReady, setLocalDiceReady] = useState(false);
   const [preGameStarted, setPreGameStarted] = useState(false);
+  const [showResults, setShowResults] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => { setState(roomState); }, [roomState]);
@@ -89,10 +92,64 @@ export default function DuelView({ session, roomState, onRoomState, onLeave }: P
     }
   };
 
+  // Check if game is complete and evaluate results
+  const gameMode = state.gameMode || "quick-duel";
+  const playerIds = useMemo(() => 
+    state.players.filter(p => !p.spectator).map(p => p.userId),
+    [state.players]
+  );
+  
+  const gameResult = useMemo(() => {
+    if (isGameComplete(gameMode, state.roundHistory, playerIds)) {
+      return evaluateGame(gameMode, state.roundHistory, playerIds);
+    }
+    return null;
+  }, [gameMode, state.roundHistory, playerIds]);
+
+  // Show results when game is complete
+  useEffect(() => {
+    if (gameResult && !showResults) {
+      // Award XP
+      const myXP = gameResult.xpRewards[playerId] || 0;
+      if (myXP > 0) {
+        const currentXP = parseInt(localStorage.getItem("user_xp") || "0");
+        const newXP = currentXP + myXP;
+        const newLevel = Math.floor(newXP / 100) + 1;
+        localStorage.setItem("user_xp", newXP.toString());
+        localStorage.setItem("user_level", newLevel.toString());
+        Toast.push("success", `+${myXP} XP earned!`);
+      }
+      
+      // Show results after a brief delay
+      setTimeout(() => setShowResults(true), 1500);
+    }
+  }, [gameResult, showResults, playerId]);
+
+  const handlePlayAgain = () => {
+    setShowResults(false);
+    onLeave();  // Return to game select
+  };
+
+  const playerNames = useMemo(() => {
+    const names: Record<string, string> = {};
+    state.players.forEach(p => {
+      names[p.userId] = p.name;
+    });
+    return names;
+  }, [state.players]);
+
   // moved stage earlier
 
   return (
     <div className="duel-grid" role="region" aria-label="Duel dashboard">
+      {showResults && gameResult && (
+        <GameResults
+          result={gameResult}
+          playerNames={playerNames}
+          onPlayAgain={handlePlayAgain}
+          onLeave={onLeave}
+        />
+      )}
       <StageBanner stage={stage} roomId={state.roomId} onLeave={onLeave} />
       {wsRef.current && (
         <LiveRTC
