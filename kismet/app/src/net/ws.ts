@@ -155,6 +155,9 @@ export function connectRoomWS(
         ws.close();
       }
     },
-    getReadyState: () => ws?.readyState || WebSocket.CLOSED
+    getReadyState: () => ws?.readyState || WebSocket.CLOSED,
+    get socket() {
+      return ws;
+    }
   };
 }

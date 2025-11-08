@@ -1,203 +1,117 @@
-/**
- * Game Rules Engine for Kismet Dice Games
- * Implements rule enforcement and winner determination for different game modes
+/** Unified Game Rules Engine (provider-based architecture)
+ * Exports new evaluateGameOutcome + transitional legacy wrappers.
  */
+import type { GameMode, GameResult, RoomStatePayload, RoundHistory, RoomStage } from "../../../shared/src/types.js";
+import { GamePhase, RoomStage as RoomStageEnum } from "../../../shared/src/types.js";
 
-import type { RoundHistory } from "../../../shared/src/types.js";
+type ScoreComputation = { total: number; highest: number };
+const XP_WIN = 50;
+const XP_PARTICIPATE = 10;
+const XP_PERFECT = 25;
 
-export type GameResult = {
-  winner: string | null;  // userId of winner, null if tie
-  scores: Record<string, number>;  // userId -> final score
-  reason: string;  // Human-readable explanation
-  xpRewards: Record<string, number>;  // userId -> XP earned
-};
-
-/**
- * Quick Duel Rules:
- * - Each player rolls once
- * - Highest total wins
- * - Ties go to highest single die
- * - Winner gets 50 XP, loser gets 10 XP
- */
-export function evaluateQuickDuel(
-  rounds: RoundHistory[],
-  playerIds: string[]
-): GameResult {
-  if (rounds.length < playerIds.length) {
-    return {
-      winner: null,
-      scores: {},
-      reason: "Waiting for all players to roll",
-      xpRewards: {}
-    };
+export function evaluateGameOutcome(room: RoomStatePayload): GameResult {
+  const scores = room.players
+    .filter(p => !p.spectator)
+    .map(p => ({ userId: p.userId, ...computeScore(room.roundHistory, p.userId, room.gameMode) }));
+  const winnerId = determineWinner(scores, room.gameMode);
+  const xpAwards: Record<string, number> = {};
+  for (const { userId, total, highest } of scores) {
+    let xp = XP_PARTICIPATE;
+    if (userId === winnerId) xp += XP_WIN;
+    if (isPerfect(total, highest, room.gameMode)) xp += XP_PERFECT;
+    xpAwards[userId] = xp;
   }
+  return { winnerId, scores, xpAwards };
+}
 
-  // Get most recent roll for each player
-  const playerRolls: Record<string, { dice: number[]; timestamp: number }> = {};
-  
-  for (const round of rounds) {
-    if (!playerRolls[round.userId] || round.timestamp > playerRolls[round.userId].timestamp) {
-      playerRolls[round.userId] = {
-        dice: round.dice,
-        timestamp: round.timestamp
+function computeScore(history: RoundHistory[], userId: string, mode: GameMode): ScoreComputation {
+  const rounds = history.filter(r => r.userId === userId);
+  if (rounds.length === 0) return { total: 0, highest: 0 };
+  switch (mode) {
+    case "QUICK_DUEL":
+    case "PRACTICE": {
+      let total = 0; let highest = 0;
+      for (const round of rounds) {
+        const roundTotal = round.dice.reduce((s, d) => s + d, 0);
+        const roundMax = Math.max(...round.dice, 0);
+        total += roundTotal;
+        highest = Math.max(highest, roundMax);
+      }
+      return { total, highest };
+    }
+    default: {
+      return {
+        total: rounds.reduce((sum, r) => sum + r.dice.reduce((a, b) => a + b, 0), 0),
+        highest: rounds.reduce((m, r) => Math.max(m, Math.max(...r.dice, 0)), 0)
       };
     }
   }
+}
 
-  // Calculate scores (sum of dice)
-  const scores: Record<string, number> = {};
-  const maxDie: Record<string, number> = {};
-  
-  for (const playerId of playerIds) {
-    const roll = playerRolls[playerId];
-    if (roll) {
-      scores[playerId] = roll.dice.reduce((sum, die) => sum + die, 0);
-      maxDie[playerId] = Math.max(...roll.dice);
-    } else {
-      scores[playerId] = 0;
-      maxDie[playerId] = 0;
+function determineWinner(scores: Array<ScoreComputation & { userId: string }>, mode: GameMode): string | null {
+  if (!scores.length) return null;
+  switch (mode) {
+    case "QUICK_DUEL":
+    case "PRACTICE": {
+      const sorted = [...scores].sort((a, b) => b.total === a.total ? b.highest - a.highest : b.total - a.total);
+      const top = sorted[0];
+      const tie = sorted.some((s, i) => i > 0 && s.total === top.total && s.highest === top.highest);
+      return tie ? null : top.userId;
     }
+    default: return null;
   }
+}
 
-  // Determine winner
-  const maxScore = Math.max(...Object.values(scores));
-  const winners = playerIds.filter(id => scores[id] === maxScore);
+function isPerfect(total: number, highest: number, mode: GameMode) {
+  if (mode !== "QUICK_DUEL" && mode !== "PRACTICE") return false;
+  return total >= 12 && highest === 6; // simplistic perfect criteria
+}
 
-  let winner: string | null = null;
-  let reason = "";
+export function calculateLevel(xp: number): number {
+  return Math.max(1, Math.floor(xp / 150) + 1);
+}
 
-  if (winners.length === 1) {
-    winner = winners[0];
-    reason = `${winner} wins with ${maxScore} total!`;
-  } else {
-    // Tie-breaker: highest single die
-    const maxDieValue = Math.max(...winners.map(id => maxDie[id]));
-    const tiebreakWinners = winners.filter(id => maxDie[id] === maxDieValue);
-    
-    if (tiebreakWinners.length === 1) {
-      winner = tiebreakWinners[0];
-      reason = `${winner} wins on tiebreaker (highest die: ${maxDieValue})!`;
-    } else {
-      winner = null;
-      reason = `Perfect tie! Both players rolled ${maxScore} total with highest die ${maxDieValue}`;
-    }
-  }
+/** Apply awarded XP to a base XP value and derive new level (centralized). */
+export function applyXp(baseXp: number, award: number): { xp: number; level: number } {
+  const nextXp = Math.max(0, baseXp + Math.max(0, award));
+  return { xp: nextXp, level: calculateLevel(nextXp) };
+}
 
-  // Calculate XP rewards
-  const xpRewards: Record<string, number> = {};
-  for (const playerId of playerIds) {
-    if (playerId === winner) {
-      xpRewards[playerId] = 50;  // Winner XP
-    } else {
-      xpRewards[playerId] = 10;  // Participation XP
-    }
-  }
-
-  // Bonus XP for perfect roll (all 6s)
-  for (const playerId of playerIds) {
-    const roll = playerRolls[playerId];
-    if (roll && roll.dice.every(die => die === 6)) {
-      xpRewards[playerId] += 25;  // Perfect roll bonus
-    }
-  }
-
+// Transitional wrappers (legacy API signature)
+export function evaluateGame(gameMode: string, rounds: RoundHistory[], playerIds: string[]): { winner: string | null; scores: Record<string, number>; reason: string; xpRewards: Record<string, number> } {
+  const modeMap: Record<string, GameMode> = {
+    "quick-duel": "QUICK_DUEL",
+    "practice": "PRACTICE"
+  };
+  const room: RoomStatePayload = {
+    roomId: "legacy",
+    createdAt: Date.now(),
+    stage: RoomStageEnum.COMPLETED as RoomStage,
+    hostId: null,
+    challengerId: null,
+    players: playerIds.map(id => ({ userId: id, name: id, role: "challenger", spectator: false, phase: GamePhase.SEALED, streak: 0, xp: 0, level: 1, avatar: "🎲", diceReady: true, connected: true })),
+    order: playerIds,
+    currentIdx: 0,
+    phase: GamePhase.SEALED,
+    roundHistory: rounds,
+    turnStartTime: null,
+    gameMode: modeMap[gameMode] || "QUICK_DUEL",
+    winner: null
+  };
+  const outcome = evaluateGameOutcome(room);
   return {
-    winner,
-    scores,
-    reason,
-    xpRewards
+    winner: outcome.winnerId,
+    scores: Object.fromEntries(outcome.scores.map(s => [s.userId, s.total])),
+    reason: outcome.winnerId ? `${outcome.winnerId} wins` : "Tie",
+    xpRewards: outcome.xpAwards
   };
 }
 
-/**
- * Practice Mode Rules:
- * - Single player
- * - No winner determination
- * - Fixed XP reward for completion
- */
-export function evaluatePractice(
-  rounds: RoundHistory[],
-  playerId: string
-): GameResult {
-  const playerRounds = rounds.filter(r => r.userId === playerId);
-  
-  if (playerRounds.length === 0) {
-    return {
-      winner: null,
-      scores: {},
-      reason: "Practice session in progress",
-      xpRewards: {}
-    };
+export function isGameComplete(gameMode: string, rounds: RoundHistory[], playerIds: string[]): boolean {
+  if (gameMode === "practice") return rounds.some(r => r.userId === playerIds[0]);
+  if (gameMode === "quick-duel") {
+    const rollers = new Set(rounds.map(r => r.userId));
+    return playerIds.every(id => rollers.has(id));
   }
-
-  const lastRoll = playerRounds[playerRounds.length - 1];
-  const total = lastRoll.dice.reduce((sum, die) => sum + die, 0);
-  
-  return {
-    winner: playerId,
-    scores: { [playerId]: total },
-    reason: `Practice roll complete! Total: ${total}`,
-    xpRewards: { [playerId]: 5 }  // Small XP for practice
-  };
-}
-
-/**
- * Main game evaluation function
- * Routes to appropriate rules based on game mode
- */
-export function evaluateGame(
-  gameMode: string,
-  rounds: RoundHistory[],
-  playerIds: string[]
-): GameResult {
-  switch (gameMode) {
-    case "quick-duel":
-      return evaluateQuickDuel(rounds, playerIds);
-    
-    case "practice":
-      return evaluatePractice(rounds, playerIds[0] || "unknown");
-    
-    // Future game modes
-    case "craps":
-    case "liars-dice":
-    case "yahtzee":
-    case "bunco":
-      return {
-        winner: null,
-        scores: {},
-        reason: `${gameMode} rules not yet implemented`,
-        xpRewards: {}
-      };
-    
-    default:
-      return {
-        winner: null,
-        scores: {},
-        reason: "Unknown game mode",
-        xpRewards: {}
-      };
-  }
-}
-
-/**
- * Check if game is complete based on game mode rules
- */
-export function isGameComplete(
-  gameMode: string,
-  rounds: RoundHistory[],
-  playerIds: string[]
-): boolean {
-  switch (gameMode) {
-    case "quick-duel":
-      // Complete when all players have rolled at least once
-      const playerRolls = new Set(rounds.map(r => r.userId));
-      return playerIds.every(id => playerRolls.has(id));
-    
-    case "practice":
-      // Complete after first roll
-      return rounds.length > 0;
-    
-    default:
-      return false;
-  }
+  return false;
 }

@@ -225,12 +225,33 @@ export default function CameraRoller({ roomId, playerId, token, role, yourTurn, 
   const statusText = statusMessage(status, stage, yourTurn);
 
   return (
-    <div ref={wrapRef} className="camera" style={{ filter: "brightness(var(--seal-bright))" }}>
-      <video ref={videoRef} className="video" muted playsInline></video>
-      <div className="overlay">
+    <div
+      ref={wrapRef}
+      className="camera"
+      style={{ filter: "brightness(var(--seal-bright))" }}
+      role="group"
+      aria-label="Dice roll capture area"
+    >
+      <video
+        ref={videoRef}
+        className="video"
+        muted
+        playsInline
+        aria-label="Live dice video feed"
+      ></video>
+      <div className="overlay" aria-hidden="false">
         <SealBadge score={score} />
-        {values.length > 0 && <div className="snap">Result: <span className="values">{values.map((v, i) => <span key={i} className="value-chip">{v}</span>)}</span></div>}
-        <div className="camera-status" aria-live="polite">{statusText}</div>
+        {values.length > 0 && (
+          <div className="snap" role="status" aria-live="polite">
+            Result:
+            <div className="values values-row" aria-label="Dice values side by side">
+              {values.map((v, i) => (
+                <span key={i} className="value-chip" aria-label={`Die ${i + 1} value ${v}`}>{v}</span>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="camera-status" role="status" aria-live="polite">{statusText}</div>
       </div>
     </div>
   );

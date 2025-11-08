@@ -74,19 +74,73 @@ npm run dev:app
 # Open http://localhost:5173
 ```
 
-### Deployment
+### Deployment (Step-by-Step)
+
+1. **Create Cloudflare API Token**
+    - Go to: Dashboard → My Profile → API Tokens → Create Token
+    - Start from template "Edit Cloudflare Workers" then ADD scopes:
+      - Account:Read
+      - Workers Scripts:Edit
+      - Workers KV Storage:Edit
+      - Pages:Edit
+      - (Optional) R2:Read, R2:Write (for future audit frame storage)
+    - Restrict to your account, set an expiration (e.g. 90 days) and name it `dice-ci`.
+
+2. **Add GitHub Repository Secrets** (`Settings → Secrets → Actions`):
+    - `CLOUDFLARE_API_TOKEN` = token from step 1
+    - `CLOUDFLARE_ACCOUNT_ID` = from any Workers dashboard URL (the long hex)
+    - (Optional) `TURN_TOKEN_ID`, `TURN_API_TOKEN` if rotating via CI
+
+3. **Set Worker Secrets Once (Locally)**
+    ```bash
+    cd kismet/worker
+    npx wrangler secret put TURN_TOKEN_ID
+    npx wrangler secret put TURN_API_TOKEN
+    ```
+    (Skip if you don't need TURN yet.)
+
+4. **Install Dependencies & Dry-Run**
+    ```bash
+    cd kismet/worker && npm install && npm run dry-run
+    cd ../app && npm install && npm run build
+    ```
+    Confirm `worker/dist` and `app/dist` exist (pages build output is `app/dist`).
+
+5. **Push to `main`**
+    - Any change under `kismet/worker`, `kismet/app`, `kismet/shared`, or `kismet/infra/wrangler.toml` triggers CI deploy.
+    - Add `[skip-deploy]` in commit message to bypass.
+
+6. **Monitor GitHub Actions**
+    - Workflow: `Deploy Kismet Worker & Pages`
+    - Ensure `deploy-worker` then `deploy-pages` jobs turn green.
+
+7. **Verify Deployment**
+    - Worker (Test endpoint): `curl -I https://<your-worker-subdomain>.workers.dev/health` (create `/health` route if missing)
+    - Pages: Open `https://kismet-app.pages.dev` or your custom domain.
+
+8. **(Optional) Custom Domain**
+    - In Pages project settings, map domain. For API calls from app, set `VITE_API_BASE` accordingly.
+
+9. **Rotating Secrets**
+    - Create new token, update GitHub secret, re-run workflow. Worker secrets only need rotation if compromised.
+
+10. **Preview Environments (Optional)**
+    - Convert workflow trigger to `pull_request` and add a step:
+      ```bash
+      npx wrangler pages deploy dist --project-name kismet-app --branch ${{ github.head_ref }}
+      ```
+
+### Manual One-Off Deployment
 
 ```bash
-# Deploy Worker
-npm run deploy:worker
+# Worker
+cd kismet/worker
+npm run deploy
 
-# Build and deploy Pages
-npm run build:app
-npx wrangler pages deploy app/dist --project-name kismet-app
-
-# Configure routing (Cloudflare Dashboard)
-# Pattern: your-domain.pages.dev/api/*
-# Service: kismet-worker
+# Pages (after building)
+cd ../app
+npm run build
+npx wrangler pages deploy dist --project-name kismet-app
 ```
 
 ## 📖 Documentation

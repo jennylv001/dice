@@ -83,10 +83,10 @@ export type PlayerState = {
   phase: GamePhase;
   streak: number;
   xp: number;
+  level: number; // authoritative level derived from xp
+  avatar: string; // avatar URL or emoji
   diceReady: boolean;
   connected: boolean;
-  avatar?: string;  // Avatar emoji or identifier
-  level?: number;   // Calculated from XP
 };
 
 export type RoomStatePayload = {
@@ -101,8 +101,40 @@ export type RoomStatePayload = {
   phase: GamePhase;
   roundHistory: RoundHistory[];
   turnStartTime: number | null;
-  gameMode?: string;  // Game mode ID (quick-duel, craps, etc.)
-  winner?: string;    // Winner userId when game completes
+  gameMode: GameMode; // unified enum
+  winner: string | null; // null until resolved
+};
+
+export type GameMode =
+  | "QUICK_DUEL"
+  | "PRACTICE"
+  | "CRAPS"
+  | "LIARS_DICE"
+  | "YAHTZEE"
+  | "BUNCO";
+
+export type GameResult = {
+  winnerId: string | null;
+  scores: Array<{ userId: string; total: number; highest: number }>;
+  xpAwards: Record<string, number>;
+};
+
+export type UserProfile = {
+  id: string;
+  email: string;
+  name: string;
+  avatar: string;
+  xp: number;
+  level: number;
+  createdAt: number;
+  isGuest?: boolean; // guest profiles do not persist server-side
+};
+
+export type AuthToken = {
+  token: string;
+  userId: string;
+  issuedAt: number;
+  expiresAt: number;
 };
 
 export type ApiStartRollRes = {

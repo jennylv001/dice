@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AuthScreen Legacy Preview</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <style>
+    :root { font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif; }
+    body { margin:0; background:#0b0e12; color:#e8e9ea; }
+    .auth-screen { display:flex; flex-wrap:wrap; gap:2rem; padding:3rem 2.5rem; max-width:1200px; margin:0 auto; }
+    .auth-container { flex: 1 1 420px; }
+    .auth-card { background:#161b22; border:1px solid #232a31; border-radius:16px; padding:2rem; box-shadow:0 4px 18px -6px rgba(0,0,0,.5); }
+    .auth-header { margin-bottom:1.5rem; }
+    .auth-logo { display:flex; align-items:center; gap:.75rem; }
+    .logo-icon { font-size:2.25rem; line-height:1; }
+    .logo-text { font-size:1.9rem; margin:0; font-weight:600; }
+    .auth-subtitle { margin:.5rem 0 0; color:#8ea4b5; font-size:.95rem; }
+    .auth-tabs { display:flex; gap:.5rem; margin-bottom:1rem; }
+    .auth-tab { flex:1; background:#1f252d; border:1px solid #2c333b; padding:.6rem .8rem; color:#cdd6dd; font-weight:500; cursor:pointer; border-radius:8px; }
+    .auth-tab.active { background:#2563eb; border-color:#2563eb; color:#fff; }
+    .auth-form .field { margin-bottom:1rem; }
+    .label { display:block; font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; font-weight:600; margin-bottom:.35rem; color:#92a7b7; }
+    .input { width:100%; background:#1e252c; border:1px solid #2a323b; color:#e6edf3; padding:.7rem .8rem; border-radius:8px; font-size:.95rem; }
+    .btn { border:none; cursor:pointer; font-size:.95rem; font-weight:600; border-radius:10px; padding:.75rem 1rem; display:inline-flex; align-items:center; justify-content:center; gap:.5rem; }
+    .btn.primary { background:#1d4ed8; color:#fff; width:100%; }
+    .btn.secondary { background:#374151; color:#fff; width:100%; }
+    .auth-divider { text-align:center; margin:1.25rem 0; position:relative; }
+    .auth-divider span { background:#161b22; padding:0 .75rem; color:#6b7f90; font-size:.75rem; font-weight:600; }
+    .auth-divider:before { content:""; position:absolute; top:50%; left:0; right:0; height:1px; background:#25313b; transform:translateY(-50%); }
+    .auth-footer { margin-top:1.5rem; font-size:.8rem; color:#778a99; text-align:center; }
+    .link-button { background:none; border:none; color:#3b82f6; cursor:pointer; font-weight:600; }
+    .auth-features { display:grid; gap:1rem; margin-top:2rem; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); }
+    .feature-card { background:#161b22; border:1px solid #232a31; padding:1rem .9rem 1.1rem; border-radius:12px; display:flex; flex-direction:column; gap:.4rem; }
+    .feature-icon { font-size:1.4rem; }
+    .feature-card h3 { margin:0; font-size:.9rem; font-weight:600; letter-spacing:.02em; }
+    .feature-card p { margin:0; font-size:.74rem; line-height:1.15rem; color:#8295a4; }
+    .card.elevated { position:relative; }
+    .guest-note { margin-top:.75rem; font-size:.7rem; color:#8da2b3; text-align:center; }
+    @media (max-width:860px){ .auth-screen { padding:2.2rem 1.25rem; } }
+  </style>
+</head>
+<body>
+  <div class="auth-screen">
+    <div class="auth-container">
+      <div class="auth-card card elevated">
+        <div class="auth-header">
+          <div class="auth-logo"><div class="logo-icon">🎲</div><h1 class="logo-text">Kismet</h1></div>
+          <p class="auth-subtitle">Welcome back, roller</p>
+        </div>
+        <div class="auth-tabs">
+          <button class="auth-tab active" type="button">Sign In</button>
+          <button class="auth-tab" type="button">Sign Up</button>
+        </div>
+        <form class="auth-form" aria-label="Legacy auth form (static preview)">
+          <div class="field"><label class="label">Email</label><input class="input" placeholder="roller@example.com" /></div>
+          <div class="field"><label class="label">Password</label><input class="input" type="password" placeholder="••••••••" /></div>
+          <button class="btn primary" type="button">Sign In</button>
+        </form>
+        <div class="auth-divider"><span>or</span></div>
+        <button class="btn secondary" type="button">Continue as Guest</button>
+        <p class="auth-footer">Don't have an account? <button class="link-button" type="button">Sign up</button></p>
+        <div class="guest-note">Static mock – form submission disabled.</div>
+      </div>
+      <div class="auth-features">
+        <div class="feature-card"><div class="feature-icon">🔒</div><h3>Cryptographic Proof</h3><p>Tamper‑proof roll seals.</p></div>
+        <div class="feature-card"><div class="feature-icon">📱</div><h3>Universal Support</h3><p>Any modern device works.</p></div>
+        <div class="feature-card"><div class="feature-icon">⚡</div><h3>Real-time Duels</h3><p>Integrity verified fast.</p></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

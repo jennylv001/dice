@@ -1,2 +1,29 @@
-import type { RPv1, Proof, RoundHistory, PlayerState, RoomStatePayload, GamePhase, RoomStage, PlayerRole } from "../../shared/src/types.js";
-export type { RPv1, Proof, RoundHistory, PlayerState, RoomStatePayload, GamePhase, RoomStage, PlayerRole };
+import type {
+	RPv1,
+	Proof,
+	RoundHistory,
+	PlayerState,
+	RoomStatePayload,
+	GamePhase,
+	RoomStage,
+	PlayerRole,
+	GameMode,
+	GameResult,
+	UserProfile,
+	AuthToken
+} from "../../shared/src/types.js";
+
+export type {
+	RPv1,
+	Proof,
+	RoundHistory,
+	PlayerState,
+	RoomStatePayload,
+	GamePhase,
+	RoomStage,
+	PlayerRole,
+	GameMode,
+	GameResult,
+	UserProfile,
+	AuthToken
+};

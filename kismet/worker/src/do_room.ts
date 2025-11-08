@@ -1,6 +1,17 @@
 import type { Env } from "./kv.js";
-import type { RPv1, RoundHistory, PlayerState, RoomStatePayload, GamePhase, RoomStage, PlayerRole } from "./types.js";
+import type {
+  RPv1,
+  RoundHistory,
+  PlayerState,
+  RoomStatePayload,
+  GamePhase,
+  RoomStage,
+  PlayerRole,
+  GameMode
+} from "./types.js";
 import type { AuditFrame, WSFromClient, WSFromServer } from "../../shared/src/types.js";
+import { evaluateGameOutcome, calculateLevel } from "../../shared/src/gameRules.js";
+import { updateProfile, getProfileById } from "./auth.js";
 
 type DurableObjectStorage = {
   get<T>(key: string): Promise<T | undefined>;
@@ -27,9 +38,12 @@ type PlayerRecord = {
   phase: GamePhase;
   streak: number;
   xp: number;
+  level: number;
+  avatar: string;
   diceReady: boolean;
   connected: boolean;
   lastSeen: number;
+  profileId?: string;
 };
 
 type RoomData = {
@@ -43,6 +57,8 @@ type RoomData = {
   roundHistory: RoundHistory[];
   turnStartTime: number | null;
   globalPhase: GamePhase;
+  gameMode: GameMode;
+  winner: string | null;
 };
 
 type PersistedState = {
@@ -74,7 +90,9 @@ export class RoomDO {
       currentIdx: 0,
       roundHistory: [],
       turnStartTime: null,
-      globalPhase: "LOBBY" as GamePhase
+      globalPhase: "LOBBY" as GamePhase,
+      gameMode: "QUICK_DUEL",
+      winner: null
     };
 
     state.blockConcurrencyWhile(async () => {
@@ -86,7 +104,9 @@ export class RoomDO {
           ...player,
           id,
           connected: false,
-          lastSeen: Date.now()
+          lastSeen: Date.now(),
+          avatar: sanitizeAvatar(player.avatar),
+          level: player.level ?? calculateLevel(player.xp)
         });
       }
     });
@@ -114,11 +134,20 @@ export class RoomDO {
   }
 
   private async handleCreate(req: Request): Promise<Response> {
-    const { roomId, hostName } = (await req.json()) as { roomId: string; hostName?: string };
+    const { roomId, hostName, gameMode, profile } = (await req.json()) as {
+      roomId: string;
+      hostName?: string;
+      gameMode?: GameMode;
+      profile?: { id?: string; avatar?: string; xp?: number; level?: number };
+    };
     const now = Date.now();
     const playerId = `host-${crypto.randomUUID().slice(0, 8)}`;
     const token = randomToken();
     const name = sanitizeName(hostName || "Host");
+    const mode: GameMode = gameMode ?? "QUICK_DUEL";
+    const avatar = sanitizeAvatar(profile?.avatar);
+    const xp = Math.max(0, profile?.xp ?? 0);
+    const level = profile?.level ?? calculateLevel(xp);
 
     this.data = {
       roomId,
@@ -130,7 +159,9 @@ export class RoomDO {
       currentIdx: 0,
       roundHistory: [],
       turnStartTime: null,
-      globalPhase: "JOINING" as GamePhase
+      globalPhase: "JOINING" as GamePhase,
+      gameMode: mode,
+      winner: null
     };
     this.players.clear();
     this.clients.clear();
@@ -143,10 +174,13 @@ export class RoomDO {
       spectator: false,
       phase: "JOINING" as GamePhase,
       streak: 0,
-      xp: 0,
+      xp,
+      level,
+      avatar,
       diceReady: false,
       connected: false,
-      lastSeen: now
+      lastSeen: now,
+      profileId: profile?.id
     });
 
     await this.persist();
@@ -155,7 +189,7 @@ export class RoomDO {
 
   private async handleJoin(req: Request): Promise<Response> {
     if (!this.data.hostId) return jsonResponse({ error: "room_not_initialized" }, 400);
-    const body = (await req.json()) as { name: string; role?: PlayerRole };
+  const body = (await req.json()) as { name: string; role?: PlayerRole; profile?: { id?: string; avatar?: string; xp?: number; level?: number } };
     const role: PlayerRole = body.role === "spectator" ? "spectator" : "challenger";
     if (role === "challenger" && this.data.challengerId && this.players.has(this.data.challengerId)) {
       return jsonResponse({ error: "room_full" }, 409);
@@ -165,6 +199,9 @@ export class RoomDO {
     const token = randomToken();
     const name = sanitizeName(body.name);
     const now = Date.now();
+    const avatar = sanitizeAvatar(body.profile?.avatar);
+    const xp = Math.max(0, body.profile?.xp ?? 0);
+    const level = body.profile?.level ?? calculateLevel(xp);
 
     this.players.set(playerId, {
       id: playerId,
@@ -174,10 +211,13 @@ export class RoomDO {
       spectator: role === "spectator",
       phase: "JOINING" as GamePhase,
       streak: 0,
-      xp: 0,
+      xp,
+      level,
+      avatar,
       diceReady: false,
       connected: false,
-      lastSeen: now
+      lastSeen: now,
+      profileId: body.profile?.id
     });
 
     if (role === "challenger") {
@@ -235,19 +275,50 @@ export class RoomDO {
   private async handleSubmit(req: Request): Promise<Response> {
     const { userId, rp } = (await req.json()) as { userId: string; rp: RPv1 };
     const player = this.players.get(userId);
+    const updatedProfiles = new Set<string>();
     if (player) {
       player.phase = "SEALED" as GamePhase;
       const score = rp.integrity_scores.overall;
       const bonusXp = Math.round(10 + score * 20 + (player.streak > 0 ? player.streak * 5 : 0));
       player.xp += bonusXp;
+      player.level = calculateLevel(player.xp);
+      if (player.profileId) updatedProfiles.add(player.profileId);
       if (score >= 0.8) player.streak++; else player.streak = 0;
       this.data.roundHistory.push({ round_id: rp.round_id, userId, dice: rp.dice_values, score, timestamp: rp.timestamp_server });
       if (this.data.roundHistory.length > 50) this.data.roundHistory = this.data.roundHistory.slice(-50);
+      const result = evaluateGameOutcome(this.buildRoomState());
+      this.data.winner = result.winnerId;
+      for (const [uid, award] of Object.entries(result.xpAwards)) {
+        const target = this.players.get(uid);
+        if (!target) continue;
+        // Prevent double counting: awards represent per-outcome bonuses, ensure we only add delta beyond participation base.
+        // Since we already added base XP above, only apply additional delta beyond participation baseline.
+        const base = 10;
+        const delta = Math.max(0, award - base);
+        if (delta > 0) {
+          target.xp += delta;
+          target.level = calculateLevel(target.xp);
+          if (target.profileId) updatedProfiles.add(target.profileId);
+        }
+      }
     }
     this.broadcastExcept(userId, JSON.stringify({ t: "opp_result", p: rp } as WSFromServer));
     this.broadcastPhase("SEALED" as GamePhase, userId);
     this.advanceTurn();
     await this.persist();
+    await Promise.all(Array.from(updatedProfiles).map(async profileId => {
+      const playerEntry = Array.from(this.players.values()).find(p => p.profileId === profileId);
+      if (!playerEntry) return;
+      const existing = await getProfileById(this.env, profileId);
+      if (!existing) return;
+      await updateProfile(this.env, {
+        ...existing,
+        name: playerEntry.name,
+        avatar: playerEntry.avatar,
+        xp: playerEntry.xp,
+        level: playerEntry.level
+      });
+    }));
     return jsonResponse({ ok: true });
   }
 
@@ -335,6 +406,10 @@ export class RoomDO {
         this.broadcastExcept(playerId, JSON.stringify({ t: "rtc_offer", p: { from: playerId, sdp: msg.p.sdp } } as WSFromServer));
         break;
       }
+      case "rtc_want": {
+        this.broadcastExcept(playerId, JSON.stringify({ t: "rtc_want", p: { from: playerId, enable: !!msg.p.enable } } as WSFromServer));
+        break;
+      }
       case "rtc_answer": {
         this.broadcastExcept(playerId, JSON.stringify({ t: "rtc_answer", p: { from: playerId, sdp: msg.p.sdp } } as WSFromServer));
         break;
@@ -415,6 +490,7 @@ export class RoomDO {
     this.data.turnStartTime = now;
     this.data.stage = "IN_PROGRESS" as RoomStage;
     this.data.globalPhase = "TURN_READY" as GamePhase;
+    this.data.winner = null;
 
     for (const [id, player] of this.players) {
       if (player.spectator) continue;
@@ -472,6 +548,8 @@ export class RoomDO {
       phase: p.phase,
       streak: p.streak,
       xp: p.xp,
+      level: p.level ?? calculateLevel(p.xp),
+      avatar: p.avatar,
       diceReady: p.diceReady,
       connected: p.connected
     }));
@@ -487,7 +565,9 @@ export class RoomDO {
       currentIdx: this.data.currentIdx,
       phase: this.data.globalPhase,
       roundHistory: this.data.roundHistory.slice(-10),
-      turnStartTime: this.data.turnStartTime
+      turnStartTime: this.data.turnStartTime,
+      gameMode: this.data.gameMode,
+      winner: this.data.winner
     };
   }
 
@@ -512,6 +592,15 @@ export class RoomDO {
 function sanitizeName(name: string): string {
   const trimmed = name.trim().slice(0, 24);
   return trimmed.length > 0 ? trimmed : "Player";
+}
+
+function sanitizeAvatar(avatar?: string): string {
+  const fallback = "🎲";
+  if (!avatar) return fallback;
+  const trimmed = avatar.trim();
+  if (!trimmed) return fallback;
+  // Allow single grapheme (emoji) or short text up to 4 chars.
+  return trimmed.slice(0, 4);
 }
 
 function randomToken(): string {

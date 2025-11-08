@@ -9,11 +9,13 @@ import StageBanner from "./StageBanner";
 import GameResults from "./GameResults";
 import { connectRoomWS } from "../net/ws";
 import { Toast } from "./Toast";
-import { evaluateGame, isGameComplete } from "../rules/gameRules";
+import { evaluateGameOutcome, applyXp } from "../rules/gameRules";
+import { useAuth } from "../providers/AuthProvider";
 import type { LobbySession } from "./RoomLobby";
 import type { PlayerState, RoomStatePayload, WSFromServer, RoomStage } from "../../../shared/src/types.js";
 import { GamePhase } from "../../../shared/src/types.js";
 import type { WSFromClient } from "../../../shared/src/types.js";
+import PlayerBadge from "./PlayerBadge";
 
 type Props = {
   session: LobbySession;
@@ -24,15 +26,17 @@ type Props = {
 
 export default function DuelView({ session, roomState, onRoomState, onLeave }: Props) {
   const { roomId, playerId, token, role, name } = session;
-  const [state, setState] = useState<RoomStatePayload>(roomState);
+  const { state: authState, updateProfile } = useAuth();
+  const [room, setRoom] = useState<RoomStatePayload>(roomState);
   const [lastOpp, setLastOpp] = useState<{ values: number[]; score: number } | null>(null);
   const [thumb, setThumb] = useState<{ t_ms: number; luma64x36_b64: string } | null>(null);
   const [localDiceReady, setLocalDiceReady] = useState(false);
   const [preGameStarted, setPreGameStarted] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
+  const wsRef = useRef<ReturnType<typeof connectRoomWS> | null>(null);
+  const numberFormatter = useMemo(() => new Intl.NumberFormat(), []);
 
-  useEffect(() => { setState(roomState); }, [roomState]);
+  useEffect(() => { setRoom(roomState); }, [roomState]);
 
   useEffect(() => {
     const ws = connectRoomWS({
@@ -43,11 +47,11 @@ export default function DuelView({ session, roomState, onRoomState, onLeave }: P
       role,
       onMessage: (msg: WSFromServer) => {
         if (msg.t === "state") {
-          setState(msg.p);
+          setRoom(msg.p);
           onRoomState(msg.p);
         }
         if (msg.t === "room_stage") {
-          setState(curr => ({ ...curr, stage: msg.p.stage }));
+          setRoom(curr => ({ ...curr, stage: msg.p.stage }));
         }
         if (msg.t === "your_turn") {
           Toast.push("info", "🎲 Roll 'em! Your moment has arrived.");
@@ -64,17 +68,17 @@ export default function DuelView({ session, roomState, onRoomState, onLeave }: P
   }, [roomId, playerId, token, role, onRoomState]);
 
   const currentTurnId = useMemo(() => {
-    if (!state.order.length) return null;
-    const idx = state.currentIdx % state.order.length;
-    return state.order[idx];
-  }, [state.order, state.currentIdx]);
+    if (!room.order.length) return null;
+    const idx = room.currentIdx % room.order.length;
+    return room.order[idx];
+  }, [room.order, room.currentIdx]);
 
-  const youState = useMemo<PlayerState | undefined>(() => state.players.find(p => p.userId === playerId), [state.players, playerId]);
-  const oppState = useMemo<PlayerState | undefined>(() => state.players.find(p => p.userId !== playerId && !p.spectator), [state.players, playerId]);
-  const currentPhase = youState?.phase ?? state.phase ?? GamePhase.LOBBY;
-  const stage: RoomStage = state.stage;
+  const youState = useMemo<PlayerState | undefined>(() => room.players.find(p => p.userId === playerId), [room.players, playerId]);
+  const oppState = useMemo<PlayerState | undefined>(() => room.players.find(p => p.userId !== playerId && !p.spectator), [room.players, playerId]);
+  const currentPhase = youState?.phase ?? room.phase ?? GamePhase.LOBBY;
+  const stage: RoomStage = room.stage;
   const yourTurn = role !== "spectator" && currentTurnId === playerId;
-  const bothPlayersPresent = useMemo(() => state.players.filter(p => !p.spectator).length >= 2, [state.players]);
+  const bothPlayersPresent = useMemo(() => room.players.filter(p => !p.spectator).length >= 2, [room.players]);
   const canStartPreGame = !preGameStarted && bothPlayersPresent && stage === "AWAITING_OPPONENT" && role === "host";
   // Local transition for UI only; authoritative stage remains server-driven.
   useEffect(() => {
@@ -82,48 +86,42 @@ export default function DuelView({ session, roomState, onRoomState, onLeave }: P
     if (!preGameStarted && stage === "AWAITING_DICE") setPreGameStarted(true);
   }, [preGameStarted, stage]);
 
+  const youXpLabel = youState ? `XP ${numberFormatter.format(Math.max(0, Math.round(youState.xp)))}` : undefined;
+  const liveSocket = wsRef.current?.socket ?? null;
+
   const handleDiceReadyChange = (ready: boolean) => {
     if (localDiceReady === ready) return;
     setLocalDiceReady(ready);
     const ws = wsRef.current;
     if (ws) {
       const msg: WSFromClient = { t: "dice_status", p: { ready } };
-      ws.send(JSON.stringify(msg));
+      ws.send(msg); // wrapper handles JSON serialization
     }
   };
 
   // Check if game is complete and evaluate results
-  const gameMode = state.gameMode || "quick-duel";
-  const playerIds = useMemo(() => 
-    state.players.filter(p => !p.spectator).map(p => p.userId),
-    [state.players]
-  );
-  
-  const gameResult = useMemo(() => {
-    if (isGameComplete(gameMode, state.roundHistory, playerIds)) {
-      return evaluateGame(gameMode, state.roundHistory, playerIds);
-    }
-    return null;
-  }, [gameMode, state.roundHistory, playerIds]);
+  const activePlayers = useMemo(() => room.players.filter(p => !p.spectator), [room.players]);
+  const allHaveAtLeastOneRound = useMemo(() => {
+    const ids = new Set(room.roundHistory.map(r => r.userId));
+    return activePlayers.every(p => ids.has(p.userId));
+  }, [activePlayers, room.roundHistory]);
+  const gameComplete = room.gameMode === "PRACTICE" ? room.roundHistory.some(r => r.userId === playerId) : allHaveAtLeastOneRound;
+  const outcome = useMemo(() => gameComplete ? evaluateGameOutcome(room) : null, [gameComplete, room]);
 
-  // Show results when game is complete
   useEffect(() => {
-    if (gameResult && !showResults) {
-      // Award XP
-      const myXP = gameResult.xpRewards[playerId] || 0;
-      if (myXP > 0) {
-        const currentXP = parseInt(localStorage.getItem("user_xp") || "0");
-        const newXP = currentXP + myXP;
-        const newLevel = Math.floor(newXP / 100) + 1;
-        localStorage.setItem("user_xp", newXP.toString());
-        localStorage.setItem("user_level", newLevel.toString());
-        Toast.push("success", `+${myXP} XP earned!`);
+    if (outcome && !showResults) {
+      const myAward = outcome.xpAwards[playerId] || 0;
+      if (myAward > 0) {
+        // Persist XP/level for authenticated non-guest profiles.
+        if (authState.status === "authenticated" && !authState.profile.isGuest) {
+          const { xp, level } = applyXp(authState.profile.xp, myAward);
+          updateProfile({ ...authState.profile, xp, level });
+        }
+        Toast.push("info", `+${myAward} XP earned!`);
       }
-      
-      // Show results after a brief delay
-      setTimeout(() => setShowResults(true), 1500);
+      setTimeout(() => setShowResults(true), 1200);
     }
-  }, [gameResult, showResults, playerId]);
+  }, [outcome, playerId, showResults, authState, updateProfile]);
 
   const handlePlayAgain = () => {
     setShowResults(false);
@@ -132,38 +130,48 @@ export default function DuelView({ session, roomState, onRoomState, onLeave }: P
 
   const playerNames = useMemo(() => {
     const names: Record<string, string> = {};
-    state.players.forEach(p => {
+    room.players.forEach(p => {
       names[p.userId] = p.name;
     });
     return names;
-  }, [state.players]);
+  }, [room.players]);
 
   // moved stage earlier
 
   return (
     <div className="duel-grid" role="region" aria-label="Duel dashboard">
-      {showResults && gameResult && (
+      {showResults && outcome && (
         <GameResults
-          result={gameResult}
+          result={{ winner: outcome.winnerId, scores: Object.fromEntries(outcome.scores.map(s => [s.userId, s.total])), xpRewards: outcome.xpAwards, reason: outcome.winnerId ? `${outcome.winnerId} wins` : "Tie" }}
           playerNames={playerNames}
           onPlayAgain={handlePlayAgain}
           onLeave={onLeave}
         />
       )}
-      <StageBanner stage={stage} roomId={state.roomId} onLeave={onLeave} />
-      {wsRef.current && (
+  <StageBanner stage={stage} roomId={room.roomId} onLeave={onLeave} />
+      {liveSocket && (
         <LiveRTC
           roomId={roomId}
           userId={playerId}
           token={token}
-          ws={wsRef.current}
+          ws={liveSocket}
           wantAudio={role !== "spectator"}
         />
       )}
       <section className="card high-card" aria-labelledby="you-heading">
         <header className="card-header">
           <p className="eyebrow">Your station</p>
-          <h2 id="you-heading">{name}</h2>
+          <h2 id="you-heading" className={youState ? "visually-hidden" : undefined}>{name}</h2>
+          {youState && (
+            <PlayerBadge
+              name={youState.name}
+              avatar={youState.avatar}
+              level={youState.level}
+              subtitle={youXpLabel}
+              size="lg"
+              orientation="vertical"
+            />
+          )}
         </header>
         <CameraRoller
           roomId={roomId}
@@ -173,7 +181,6 @@ export default function DuelView({ session, roomState, onRoomState, onLeave }: P
           yourTurn={yourTurn}
           stage={stage}
           onDiceReadyChange={handleDiceReadyChange}
-          startCaptureEnabled={preGameStarted}
         />
         <footer className="card-footer status">
           {role === "spectator" && <span className="muted">Watching the action unfold</span>}
@@ -187,7 +194,7 @@ export default function DuelView({ session, roomState, onRoomState, onLeave }: P
                 const ws = wsRef.current;
                 if (ws) {
                   const msg: WSFromClient = { t: "start_verification" };
-                  ws.send(JSON.stringify(msg));
+                  ws.send(msg);
                 }
               }}
               style={{ marginLeft: 12 }}
@@ -209,7 +216,7 @@ export default function DuelView({ session, roomState, onRoomState, onLeave }: P
       />
       <aside className="card room-shell" aria-label="Room overview">
         <RoomStatePanel
-          state={state}
+          state={room}
           youId={playerId}
           currentTurnId={currentTurnId}
           phase={currentPhase}
@@ -224,6 +231,7 @@ export default function DuelView({ session, roomState, onRoomState, onLeave }: P
 
 function RoomStatePanel({ state, youId, currentTurnId, phase, localDiceReady }: { state: RoomStatePayload; youId: string; currentTurnId: string | null; phase: GamePhase; localDiceReady: boolean }) {
   const activeCount = state.players.filter(p => !p.spectator).length;
+  const xpFormatter = useMemo(() => new Intl.NumberFormat(), []);
   return (
     <section className="room-state" aria-labelledby="room-overview-heading">
       <div className="state-head">
@@ -252,11 +260,18 @@ function RoomStatePanel({ state, youId, currentTurnId, phase, localDiceReady }: 
         {state.players.map(p => {
           const isTurn = currentTurnId === p.userId;
           const diceStatus = p.userId === youId ? localDiceReady : p.diceReady;
+          const subtitleParts = [roleLabel(p)];
+          if (!Number.isNaN(p.xp)) subtitleParts.push(`XP ${xpFormatter.format(Math.max(0, Math.round(p.xp)))}`);
           return (
             <li key={p.userId} className={`roster-item${isTurn ? " is-turn" : ""}`} aria-current={isTurn ? "true" : undefined}>
-              <div className="roster-names">
-                <span className="roster-name">{p.name}{p.userId === youId ? " (you)" : ""}</span>
-                <span className="roster-role">{roleLabel(p)}</span>
+              <div className="roster-main">
+                <PlayerBadge
+                  name={`${p.name}${p.userId === youId ? " (you)" : ""}`}
+                  avatar={p.avatar}
+                  level={p.level}
+                  subtitle={subtitleParts.join(" • ")}
+                  size="sm"
+                />
               </div>
               <div className="roster-tags">
                 {diceStatus ? <span className="tag tag-ready">Dice locked</span> : <span className="tag">Need dice</span>}

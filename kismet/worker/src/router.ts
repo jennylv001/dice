@@ -7,6 +7,7 @@ import type { Proof, RPv1 } from "./types.js";
 import { sha256, b64url } from "../../shared/src/crypto.js";
 import { handleTurnRequest } from "./turn.js";
 import { checkRateLimit, rateLimitResponse, getRateLimitKey, LIMITS } from "./ratelimit.js";
+import { signUp, login, getProfileByToken } from "./auth.js";
 
 export async function handleApi(req: Request, env: Env) {
   const url = new URL(req.url);
@@ -16,14 +17,56 @@ export async function handleApi(req: Request, env: Env) {
     return corsPreflight();
   }
 
+  if (url.pathname === "/api/auth/signup" && req.method === "POST") {
+    const payload = await req.json().catch(() => null) as { email?: string; password?: string; name?: string; avatar?: string } | null;
+    if (!payload || !payload.email || !payload.password) return bad("invalid_payload");
+    const result = await signUp(env, {
+      email: payload.email,
+      password: payload.password,
+      name: payload.name ?? "Roller",
+      avatar: payload.avatar
+    });
+    if (!result.ok) {
+      const status = result.error === "email_exists" ? 409 : 400;
+      return bad(result.error, status);
+    }
+    return okJson({
+      token: result.token.token,
+      expiresAt: result.token.expiresAt,
+      profile: result.profile
+    });
+  }
+
+  if (url.pathname === "/api/auth/login" && req.method === "POST") {
+    const payload = await req.json().catch(() => null) as { email?: string; password?: string } | null;
+    if (!payload || !payload.email || !payload.password) return bad("invalid_payload");
+    const result = await login(env, { email: payload.email, password: payload.password });
+    if (!result.ok) {
+      const code = result.error === "invalid_password" ? 403 : 404;
+      return bad(result.error, code);
+    }
+    return okJson({
+      token: result.token.token,
+      expiresAt: result.token.expiresAt,
+      profile: result.profile
+    });
+  }
+
   if (url.pathname === "/api/rooms" && req.method === "POST") {
-    const { hostName } = (await req.json()) as { hostName?: string };
+    const body = (await req.json()) as { hostName?: string; token?: string; gameMode?: string };
+    const profile = body.token ? await getProfileByToken(env, body.token) : null;
+    const hostName = profile?.name ?? body.hostName;
     const roomId = generateRoomId();
     const id = env.ROOM_DO.idFromName(roomId);
     const stub = env.ROOM_DO.get(id);
     const createRes = await stub.fetch(new Request(new URL("/do/create", req.url), {
       method: "POST",
-      body: JSON.stringify({ roomId, hostName })
+      body: JSON.stringify({
+        roomId,
+        hostName,
+        gameMode: mapGameMode(body.gameMode),
+        profile: profile ? { id: profile.id, avatar: profile.avatar, xp: profile.xp, level: profile.level } : undefined
+      })
     }));
     if (!createRes.ok) {
       const body = await createRes.json().catch(() => ({ error: "create_failed" }));
@@ -42,19 +85,25 @@ export async function handleApi(req: Request, env: Env) {
   const joinMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/join$/);
   if (joinMatch && req.method === "POST") {
     const roomId = joinMatch[1];
-    const { name, role } = (await req.json()) as { name: string; role?: string };
-    if (!name) return bad("missing_name");
+    const { name, role, token } = (await req.json()) as { name?: string; role?: string; token?: string };
+    const profile = token ? await getProfileByToken(env, token) : null;
+    const resolvedName = profile?.name ?? name;
+    if (!resolvedName) return bad("missing_name");
     
     // Rate limit check
-    const rlKey = getRateLimitKey(req, name);
-    const rlResult = await checkRateLimit(env.KISMET_KV, `join_room:${rlKey}`, LIMITS.JOIN_ROOM);
+    const rlKey = getRateLimitKey(req, profile?.id ?? resolvedName);
+    const rlResult = await checkRateLimit(env.KISMET_KV as any, `join_room:${rlKey}`, LIMITS.JOIN_ROOM);
     if (!rlResult.allowed) return rateLimitResponse(rlResult.resetAt);
     
     const id = env.ROOM_DO.idFromName(roomId);
     const stub = env.ROOM_DO.get(id);
     const joinRes = await stub.fetch(new Request(new URL("/do/join", req.url), {
       method: "POST",
-      body: JSON.stringify({ name, role })
+      body: JSON.stringify({
+        name: resolvedName,
+        role,
+        profile: profile ? { id: profile.id, avatar: profile.avatar, xp: profile.xp, level: profile.level } : undefined
+      })
     }));
     const body = await joinRes.json().catch(() => ({ error: "join_failed" }));
     if (!joinRes.ok) {
@@ -71,8 +120,8 @@ export async function handleApi(req: Request, env: Env) {
     const id = env.ROOM_DO.idFromName(roomId);
     const stub = env.ROOM_DO.get(id);
     const stateRes = await stub.fetch(new Request(new URL("/do/state", req.url)));
-  const data = await stateRes.json().catch(() => ({ error: "not_found" }));
-  return okJson(data, { status: stateRes.status });
+    const data = await stateRes.json().catch(() => ({ error: "not_found" }));
+    return okJson(data, { status: stateRes.status });
   }
 
   if (url.pathname === "/api/start-roll" && req.method === "POST") {
@@ -81,7 +130,7 @@ export async function handleApi(req: Request, env: Env) {
     
     // Rate limit check
     const rlKey = getRateLimitKey(req, userId);
-    const rlResult = await checkRateLimit(env.KISMET_KV, `start_roll:${rlKey}`, LIMITS.START_ROLL);
+    const rlResult = await checkRateLimit(env.KISMET_KV as any, `start_roll:${rlKey}`, LIMITS.START_ROLL);
     if (!rlResult.allowed) return rateLimitResponse(rlResult.resetAt);
     
     const authOk = await authPlayer(env, roomId, userId, token, req.url);
@@ -113,7 +162,7 @@ export async function handleApi(req: Request, env: Env) {
     
     // Rate limit check
     const rlKey = getRateLimitKey(req, userId);
-    const rlResult = await checkRateLimit(env.KISMET_KV, `submit_roll:${rlKey}`, LIMITS.SUBMIT_ROLL);
+    const rlResult = await checkRateLimit(env.KISMET_KV as any, `submit_roll:${rlKey}`, LIMITS.SUBMIT_ROLL);
     if (!rlResult.allowed) return rateLimitResponse(rlResult.resetAt);
     
     const authOk = await authPlayer(env, roomId, userId, token, req.url);
@@ -275,4 +324,10 @@ function generateRoomId(): string {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function mapGameMode(value?: string) {
+  const upper = (value || "").toUpperCase();
+  const allowed = new Set(["QUICK_DUEL", "PRACTICE", "CRAPS", "LIARS_DICE", "YAHTZEE", "BUNCO"]);
+  return allowed.has(upper) ? upper : "QUICK_DUEL";
 }

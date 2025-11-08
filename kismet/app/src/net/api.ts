@@ -1,4 +1,4 @@
-import type { ApiStartRollRes, Proof, RoomStatePayload, PlayerRole } from "../../../shared/src/types.js";
+import type { ApiStartRollRes, Proof, RoomStatePayload, PlayerRole, UserProfile, GameMode } from "../../../shared/src/types.js";
 
 // Allow overriding the API base (worker domain) at build time via Vite env.
 // If VITE_API_BASE is unset we fall back to relative paths expecting a route on the same origin.
@@ -39,6 +39,28 @@ export async function apiSubmitRoll(roomId: string, userId: string, token: strin
 
 export function getApiBase(): string { return API_BASE; }
 
+export type AuthResponse = { token: string; expiresAt: number; profile: UserProfile };
+
+export async function apiLogin(email: string, password: string): Promise<AuthResponse> {
+  throwIfMissing(email, "email");
+  throwIfMissing(password, "password");
+  return doJson<AuthResponse>("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, password })
+  });
+}
+
+export async function apiSignUp(payload: { email: string; password: string; name?: string; avatar?: string }): Promise<AuthResponse> {
+  throwIfMissing(payload.email, "email");
+  throwIfMissing(payload.password, "password");
+  return doJson<AuthResponse>("/api/auth/signup", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
 export type CreateRoomResponse = {
   roomId: string;
   playerId: string;
@@ -47,12 +69,14 @@ export type CreateRoomResponse = {
   room: RoomStatePayload;
 };
 
-export async function apiCreateRoom(hostName: string): Promise<CreateRoomResponse> {
-  throwIfMissing(hostName, "hostName");
+export type CreateRoomPayload = { hostName?: string; token?: string; gameMode?: GameMode };
+
+export async function apiCreateRoom(payload: CreateRoomPayload): Promise<CreateRoomResponse> {
+  if (!payload.hostName && !payload.token) throw new Error("hostName_missing");
   return doJson<CreateRoomResponse>("/api/rooms", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ hostName })
+    body: JSON.stringify({ hostName: payload.hostName, token: payload.token, gameMode: payload.gameMode })
   });
 }
 
@@ -64,13 +88,15 @@ export type JoinRoomResponse = {
   room?: RoomStatePayload;
 };
 
-export async function apiJoinRoom(roomId: string, name: string, role: PlayerRole = "challenger"): Promise<JoinRoomResponse> {
-  throwIfMissing(roomId, "roomId");
-  throwIfMissing(name, "name");
-  return doJson<JoinRoomResponse>(`/api/rooms/${encodeURIComponent(roomId)}/join`, {
+export type JoinRoomPayload = { roomId: string; name?: string; role?: PlayerRole; token?: string };
+
+export async function apiJoinRoom(payload: JoinRoomPayload): Promise<JoinRoomResponse> {
+  throwIfMissing(payload.roomId, "roomId");
+  if (!payload.name && !payload.token) throw new Error("name_missing");
+  return doJson<JoinRoomResponse>(`/api/rooms/${encodeURIComponent(payload.roomId)}/join`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name, role })
+    body: JSON.stringify({ name: payload.name, role: payload.role, token: payload.token })
   });
 }
 

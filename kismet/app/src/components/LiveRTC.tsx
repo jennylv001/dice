@@ -5,9 +5,9 @@ import { apiGetTurnServers } from "../net/api";
 
 const FALLBACK_STUN = [{ urls: "stun:stun.l.google.com:19302" }];
 
-type Props = { roomId: string; userId: string; ws: WebSocket | null; wantAudio?: boolean };
+type Props = { roomId: string; userId: string; token: string; ws: WebSocket | null; wantAudio?: boolean };
 
-export default function LiveRTC({ roomId, userId, ws, wantAudio = true }: Props) {
+export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }: Props) {
   const [enabled] = useState(true); // mandatory now
   const [connected, setConnected] = useState(false);
   const [oppId, setOppId] = useState<string | undefined>();
@@ -77,7 +77,7 @@ export default function LiveRTC({ roomId, userId, ws, wantAudio = true }: Props)
     if (!pcRef.current) {
       let iceServers: RTCIceServer[] = FALLBACK_STUN as RTCIceServer[];
       try {
-        const turn = await apiGetTurnServers();
+  const turn = await apiGetTurnServers(roomId, userId, token);
         if (turn.iceServers && turn.iceServers.length) iceServers = turn.iceServers;
       } catch {
         Toast.push("warn", "TURN unavailable, using public STUN only.");
@@ -93,7 +93,11 @@ export default function LiveRTC({ roomId, userId, ws, wantAudio = true }: Props)
       pcRef.current.ontrack = (e) => { if (remoteRef.current) remoteRef.current.srcObject = e.streams[0]; };
       if (!localStreamRef.current) {
         try {
-          localStreamRef.current = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 180, frameRate: { ideal: 24 } }, audio: wantAudio });
+          // Reduce capture resolution & frame rate to lower GPU/CPU usage while preserving clarity.
+          localStreamRef.current = await navigator.mediaDevices.getUserMedia({
+            video: { width: 240, height: 135, frameRate: { ideal: 15, max: 15 } },
+            audio: wantAudio
+          });
         } catch (err) {
           Toast.push("error", "Camera or mic permission denied. Enable access to join live.");
           return;
@@ -137,8 +141,21 @@ export default function LiveRTC({ roomId, userId, ws, wantAudio = true }: Props)
         <div style={{ fontSize: 12, color: "#9fb2c7" }}>{connected ? "Connected" : "Connecting…"}</div>
       </div>
       <div className="row" style={{ gap: 12 }}>
-        <video className="rtc-video" ref={localRef} autoPlay muted playsInline />
-        <video className="rtc-video" ref={remoteRef} autoPlay playsInline />
+        <video
+          className="rtc-video"
+          ref={localRef}
+          autoPlay
+          muted
+          playsInline
+          aria-label="Your live video feed"
+        />
+        <video
+          className="rtc-video"
+          ref={remoteRef}
+          autoPlay
+          playsInline
+          aria-label="Opponent live video feed"
+        />
       </div>
       <div style={{ color: "#9fb2c7", fontSize: 12, marginTop: 6 }}>
         {connected ? (wantAudio ? "Video+Audio live" : "Video live") : (isInitiator ? "Waiting for opponent video intent" : "Awaiting offer")}

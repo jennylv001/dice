@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useMemo } from "react";
 import type { PlayerState, RoomStage } from "../../../shared/src/types.js";
+import PlayerBadge from "./PlayerBadge";
 
 type Thumb = { t_ms: number; luma64x36_b64: string } | null;
 type Result = { values: number[]; score: number } | null;
@@ -16,23 +17,31 @@ export default function OpponentPane({ opponent, lastThumb, lastResult, stage }:
   const imageUrl = lastThumb ? toCanvasData(lastThumb.luma64x36_b64, w, h) : null;
   const title = opponent ? opponent.name : "Awaiting challenger";
   const diceReady = opponent?.diceReady ?? false;
-  const avatar = opponent?.avatar || "🎲";
-  const level = opponent?.level || 1;
+  const xpLabel = useMemo(() => opponent ? `XP ${new Intl.NumberFormat().format(Math.max(0, Math.round(opponent.xp)))}` : undefined, [opponent]);
+  const subtitle = useMemo(() => {
+    if (!opponent) return undefined;
+    const parts = [xpLabel].filter(Boolean) as string[];
+    if (opponent.streak > 0) parts.push(`${opponent.streak} win streak`);
+    return parts.join(" • ");
+  }, [opponent, xpLabel]);
 
   return (
     <section className="card opponent-card" aria-live="polite" aria-label="Opponent status">
       <header className="card-header">
-        <div className="opponent-header-top">
-          <div>
-            <p className="eyebrow">Your rival</p>
-            <div className="opponent-title-row">
-              <span className="opponent-avatar">{avatar}</span>
-              <h2>{title}</h2>
-            </div>
-            {opponent && <p className="card-sub">Level {level} • {opponent.xp || 0} XP</p>}
-          </div>
-        </div>
-        {!opponent && <p className="card-sub">Share your table code. The duel awaits a worthy opponent.</p>}
+        <p className="eyebrow">Your rival</p>
+        <h2 className={opponent ? "visually-hidden" : undefined}>{title}</h2>
+        {opponent ? (
+          <PlayerBadge
+            name={opponent.name}
+            avatar={opponent.avatar}
+            level={opponent.level}
+            subtitle={subtitle}
+            size="md"
+            orientation="vertical"
+          />
+        ) : (
+          <p className="card-sub">Share your table code. The duel awaits a worthy opponent.</p>
+        )}
       </header>
       <div className="opponent-body">
         <div className="thumb" role="img" aria-label={imageUrl ? "Opponent thumbnail" : "No thumbnail yet"}>

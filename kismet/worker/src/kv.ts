@@ -1,6 +1,9 @@
 type KVNamespace = {
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
   get(key: string): Promise<string | null>;
+  delete?(key: string): Promise<void>;
+  list?<T = unknown>(options?: { prefix?: string }): Promise<{ keys: Array<{ name: string; expiration?: number }>; cursor?: string }>;
+  getWithMetadata?<T = unknown>(key: string): Promise<{ value: string | null; metadata: T | null }>;
 };
 type DurableObjectId = unknown;
 type DurableObjectStub = { fetch(request: Request): Promise<Response> };

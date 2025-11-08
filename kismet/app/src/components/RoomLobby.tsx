@@ -9,7 +9,9 @@ import {
   type JoinRoomResponse,
   type OpenRoomEntry
 } from "../net/api";
-import type { PlayerRole, RoomStatePayload } from "../../../shared/src/types.js";
+import type { GameMode, PlayerRole, RoomStatePayload } from "../../../shared/src/types.js";
+import { useAuth } from "../providers/AuthProvider";
+import PlayerBadge from "./PlayerBadge";
 
 export type LobbySession = {
   roomId: string;
@@ -28,15 +30,25 @@ type Props = {
 
 type LobbyTab = "create" | "join" | "discover";
 
-export default function RoomLobby({ onEnter, onBack, gameMode }: Props) {
+export default function RoomLobby({ onEnter, onBack }: Props) {
+  const { state } = useAuth();
   const [activeTab, setActiveTab] = useState<LobbyTab>("create");
-  const [hostName, setHostName] = useState("");
+  const profileName = state.status === "authenticated" ? state.profile.name : "";
+  const [hostName, setHostName] = useState(profileName);
   const [roomIdInput, setRoomIdInput] = useState("");
-  const [playerName, setPlayerName] = useState("player-" + Math.random().toString(36).slice(2, 7));
+  const [playerName, setPlayerName] = useState(profileName || "player-" + Math.random().toString(36).slice(2, 7));
   const [role, setRole] = useState<PlayerRole>("challenger");
   const [loading, setLoading] = useState(false);
   const [rooms, setRooms] = useState<OpenRoomEntry[]>([]);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [gameMode, setGameMode] = useState<GameMode>("QUICK_DUEL");
+  const profile = state.status === "authenticated" ? state.profile : null;
+  const xpLabel = useMemo(() => profile ? `XP ${new Intl.NumberFormat().format(Math.max(0, Math.round(profile.xp)))}` : "", [profile]);
+
+  useEffect(() => {
+    if (state.status === "authenticated" && !hostName) setHostName(state.profile.name);
+    if (state.status === "authenticated" && !playerName) setPlayerName(state.profile.name);
+  }, [hostName, playerName, state]);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,7 +71,7 @@ export default function RoomLobby({ onEnter, onBack, gameMode }: Props) {
     const name = hostName.trim() || "Host";
     setLoading(true);
     try {
-      const res = await apiCreateRoom(name);
+      const res = await apiCreateRoom({ hostName: name, token: state.status === "authenticated" ? state.token : undefined, gameMode });
       onEnter(toSession(res.roomId, res.playerId, res.token, "host", res.playerName, res.room));
       Toast.push("info", `Table ${res.roomId} ready. Invite an opponent to begin.`);
     } catch (err: any) {
@@ -85,7 +97,7 @@ export default function RoomLobby({ onEnter, onBack, gameMode }: Props) {
     const nextRole = overrideRole ?? role;
     setLoading(true);
     try {
-      const res = await apiJoinRoom(targetRoomId, player, nextRole);
+      const res = await apiJoinRoom({ roomId: targetRoomId, name: player, role: nextRole, token: state.status === "authenticated" ? state.token : undefined });
       const room = res.room ?? (await apiGetRoom(targetRoomId)).room;
       onEnter(toSession(res.roomId, res.playerId, res.token, nextRole, player, room));
       Toast.push("info", `Joined table ${targetRoomId}. Get your dice ready.`);
@@ -110,6 +122,21 @@ export default function RoomLobby({ onEnter, onBack, gameMode }: Props) {
         <h1 id="lobby-heading">Start your dice duel</h1>
         <p className="card-sub">Provably fair rolls. Real dice only. Cryptographic seals in milliseconds.</p>
       </header>
+      {profile && (
+        <div className="profile-highlight" role="note" aria-live="polite">
+          <PlayerBadge
+            name={profile.name}
+            avatar={profile.avatar}
+            level={profile.level}
+            subtitle={xpLabel}
+            size="lg"
+            orientation="vertical"
+          />
+          <div className="muted" style={{ maxWidth: "38ch" }}>
+            Maintain your streak to accelerate level gains. Higher tiers unlock invitational ladders and premium table cosmetics.
+          </div>
+        </div>
+      )}
       <div className="lobby-tabs" role="tablist" aria-label="Lobby options">
         <button
           className={`lobby-tab${activeTab === "create" ? " is-active" : ""}`}
@@ -145,6 +172,23 @@ export default function RoomLobby({ onEnter, onBack, gameMode }: Props) {
               value={hostName}
               onChange={e => setHostName(e.target.value)}
             />
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="game-mode">Game mode</label>
+            <select
+              id="game-mode"
+              className="input role-select"
+              value={gameMode}
+              onChange={event => setGameMode(event.target.value as GameMode)}
+              disabled={loading}
+            >
+              <option value="QUICK_DUEL">Quick Duel</option>
+              <option value="PRACTICE">Practice</option>
+              <option value="CRAPS">Craps</option>
+              <option value="LIARS_DICE">Liar's Dice</option>
+              <option value="YAHTZEE">Yahtzee</option>
+              <option value="BUNCO">Bunco</option>
+            </select>
           </div>
           <button className="btn primary" type="submit" disabled={loading}>
             {loading ? "Setting up table…" : "Roll out the welcome mat"}
