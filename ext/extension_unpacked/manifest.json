@@ -1,0 +1,63 @@
+{
+  "manifest_version": 3,
+  "default_locale": "en",
+  "name": "__MSG_app_metadata_name__",
+  "version": "0.2.0",
+  "description": "__MSG_app_metadata_description__",
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "permissions": [
+    "storage",
+    "scripting",
+    "tabs",
+    "activeTab",
+    "alarms",
+    "unlimitedStorage",
+    "webNavigation"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_icon": "icon-32.png"
+  },
+  "side_panel": {
+    "default_path": "side-panel/index.html"
+  },
+  "options_page": "options/index.html",
+  "icons": {
+    "32": "icon-32.png",
+    "128": "icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*",
+        "<all_urls>"
+      ],
+      "all_frames": true,
+      "js": [
+        "content/index.iife.js"
+      ]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "ui-agent-bridge.js",
+        "side-panel/assets/*.js",
+        "side-panel/assets/*.css",
+        "options/assets/*.js",
+        "options/assets/*.css",
+        "icon-128.png",
+        "icon-32.png"
+      ],
+      "matches": [
+        "*://*/*"
+      ]
+    }
+  ]
+}
