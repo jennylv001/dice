@@ -22,11 +22,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Show commit & ref
+        run: |
+          echo "Commit: $GITHUB_SHA"
+          echo "Ref: $GITHUB_REF"
+          echo "Repo: $GITHUB_REPOSITORY"
+
+      - name: List top-level files
+        run: ls -1 . | head -50
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
+
+      - name: Check secret presence (masked)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "CLOUDFLARE_API_TOKEN set? -> $([[ -n \"$CLOUDFLARE_API_TOKEN\" ]] && echo YES || echo NO)"
+          echo "CLOUDFLARE_ACCOUNT_ID length -> ${#CLOUDFLARE_ACCOUNT_ID}"
+
+      - name: Wrangler whoami (diagnostic)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler whoami || echo "wrangler whoami failed (expected if token invalid)"
 
       - name: Install Worker deps
         working-directory: kismet/worker
