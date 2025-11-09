@@ -33,7 +33,7 @@ jobs:
 
       - name: Install Worker deps
         working-directory: kismet/worker
-        run: npm ci
+        run: npm install
 
       - name: Wrangler Version
         run: npx wrangler --version || true
@@ -75,7 +75,7 @@ jobs:
 
       - name: Install App deps
         working-directory: kismet/app
-        run: npm ci
+        run: npm install
 
       - name: Build App
         working-directory: kismet/app
