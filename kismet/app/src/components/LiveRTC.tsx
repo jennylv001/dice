@@ -196,7 +196,7 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
         if (state === "failed" || state === "closed") {
           offerAttemptedRef.current = false;
           tearDownPeer(false);
-        } else if (state === "disconnected" && !remoteWantedRef.current) {
+        } else if (state === "disconnected" && remoteWantedRef.current === false) {
           offerAttemptedRef.current = false;
           tearDownPeer(false);
         }
@@ -310,7 +310,7 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
     }).catch((err) => {
       offerAttemptedRef.current = false;
       const code = (err as any)?.code;
-      if (code === MEDIA_ACQ_RECOVERABLE && remoteWantedRef.current) {
+      if (code === MEDIA_ACQ_RECOVERABLE && remoteWantedRef.current !== false) {
         if (mediaRetryRef.current < MAX_MEDIA_RETRIES) {
           mediaRetryRef.current += 1;
           const delay = Math.min(RETRY_MAX_DELAY_MS, Math.round(RETRY_BASE_DELAY_MS * Math.pow(2, mediaRetryRef.current - 1)));
@@ -348,7 +348,7 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
             oppIdRef.current = msg.p.opp;
             setOppId(msg.p.opp);
             isInitiatorRef.current = userId < msg.p.opp;
-            if (remoteWantedRef.current) {
+            if (remoteWantedRef.current !== false) {
               attemptOffer();
             }
           }
@@ -390,8 +390,9 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
           }
         } else if (msg.t === "rtc_want") {
           if (msg.p.from !== userId) {
-            setRemoteWanted(!!msg.p.enable);
-            if (!msg.p.enable) {
+            const nextWant = msg.p.enable === undefined ? null : !!msg.p.enable;
+            setRemoteWanted(nextWant);
+            if (msg.p.enable === false) {
               offerAttemptedRef.current = false;
               tearDownPeer(true);
             }
