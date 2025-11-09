@@ -84,7 +84,7 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
   const [enabled] = useState(true); // mandatory now
   const [connected, setConnected] = useState(false);
   const [oppId, setOppId] = useState<string | undefined>();
-  const [remoteWanted, setRemoteWanted] = useState(false);
+  const [remoteWanted, setRemoteWanted] = useState<boolean | null>(null);
   const localRef = useRef<HTMLVideoElement>(null);
   const remoteRef = useRef<HTMLVideoElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -99,11 +99,11 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
   const makingOfferRef = useRef(false);
   const ignoreOfferRef = useRef(false);
   const offerAttemptedRef = useRef(false);
-  const remoteWantedRef = useRef(remoteWanted);
+  const remoteWantedRef = useRef<boolean | null>(remoteWanted);
 
   useEffect(() => {
     remoteWantedRef.current = remoteWanted;
-    if (!remoteWanted) {
+    if (remoteWanted === false) {
       mediaRetryRef.current = 0;
       if (offerRetryTimerRef.current) {
         clearTimeout(offerRetryTimerRef.current);
@@ -296,7 +296,7 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
   const attemptOffer = useCallback(() => {
     const currentWs = wsRef.current;
     if (!currentWs) return;
-    if (!remoteWantedRef.current) return;
+    if (remoteWantedRef.current === false) return;
     if (!isInitiatorRef.current) return;
     if (!oppIdRef.current) return;
     if (connectedRef.current) return;
