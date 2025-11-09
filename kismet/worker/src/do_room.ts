@@ -406,10 +406,6 @@ export class RoomDO {
         this.broadcastExcept(playerId, JSON.stringify({ t: "rtc_offer", p: { from: playerId, sdp: msg.p.sdp } } as WSFromServer));
         break;
       }
-      case "rtc_want": {
-        this.broadcastExcept(playerId, JSON.stringify({ t: "rtc_want", p: { from: playerId, enable: !!msg.p.enable } } as WSFromServer));
-        break;
-      }
       case "rtc_answer": {
         this.broadcastExcept(playerId, JSON.stringify({ t: "rtc_answer", p: { from: playerId, sdp: msg.p.sdp } } as WSFromServer));
         break;
