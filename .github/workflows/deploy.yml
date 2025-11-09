@@ -8,11 +8,8 @@ concurrency:
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'kismet/worker/**'
-      - 'kismet/app/**'
-      - 'kismet/shared/**'
-      - 'kismet/infra/wrangler.toml'
+    # Removed 'paths' filter so any commit to main triggers deploy. Previous workflow edit did not match filter,
+    # thus no run appeared. Add [skip-deploy] in commit message to bypass.
   workflow_dispatch:
 
 jobs:
