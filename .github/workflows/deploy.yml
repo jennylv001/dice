@@ -64,7 +64,11 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         working-directory: kismet/worker
-        run: npx wrangler deploy --config ../infra/wrangler.toml --quiet
+        run: |
+          echo "Running wrangler dry-run for worker..."
+          npx wrangler deploy --dry-run --config ../infra/wrangler.toml || { echo "Dry-run failed"; exit 1; }
+          echo "Dry-run OK. Deploying worker without --quiet (flag unsupported)."
+          npx wrangler deploy --config ../infra/wrangler.toml
       # Uncomment to (re)push secrets if rotating (one-time normally):
       # - name: (Optional) Update TURN secrets
       #   if: env.TURN_TOKEN_ID != ''
