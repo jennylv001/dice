@@ -1,6 +1,5 @@
 import type { WSFromClient, WSFromServer, PlayerRole } from "../../../shared/src/types.js";
-
-const API_BASE = (import.meta as any).env?.VITE_API_BASE as string | undefined;
+import { buildApiUrl } from "./api";
 
 const MAX_RECONNECT_ATTEMPTS = 5;
 const INITIAL_RECONNECT_DELAY = 1000;
@@ -29,14 +28,10 @@ export function connectRoomWS(
   let lastPongTime = Date.now();
   
   // Derive WebSocket URL
-  let hostUrl: URL;
-  if (API_BASE) {
-    hostUrl = new URL(API_BASE.startsWith("http") ? API_BASE : "https://" + API_BASE);
-  } else {
-    hostUrl = new URL(location.origin);
-  }
-  const wsProto = hostUrl.protocol === "https:" ? "wss" : "ws";
-  const wsUrl = new URL(`${wsProto}://${hostUrl.host}/api/room/${roomId}`);
+  const httpTarget = buildApiUrl(`/api/room/${roomId}`);
+  const base = new URL(httpTarget, window.location.origin);
+  const wsUrl = new URL(base.toString());
+  wsUrl.protocol = base.protocol === "https:" ? "wss:" : "ws:";
   wsUrl.searchParams.set("playerId", playerId);
   wsUrl.searchParams.set("token", token);
 
