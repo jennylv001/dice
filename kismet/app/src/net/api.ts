@@ -1,12 +1,77 @@
 import type { ApiStartRollRes, Proof, RoomStatePayload, PlayerRole, UserProfile, GameMode } from "../../../shared/src/types.js";
 
+declare global {
+  interface Window {
+    __KISMET_API_BASE__?: string;
+  }
+}
+
+const RUNTIME_STORAGE_KEY = "kismet.apiBase";
+
 // Allow overriding the API base (worker domain) at build time via Vite env.
 // If VITE_API_BASE is unset we fall back to relative paths expecting a route on the same origin.
 const RAW_BASE = (import.meta as any).env?.VITE_API_BASE as string | undefined;
-const API_BASE = RAW_BASE ? RAW_BASE.replace(/\/$/, "") : ""; // ensure no trailing slash
+
+function sanitiseBase(value?: string | null): string {
+  if (!value) return "";
+  let trimmed = value.trim();
+  if (!trimmed) return "";
+  if (!/^https?:/i.test(trimmed) && !trimmed.startsWith("/")) {
+    trimmed = `/${trimmed}`;
+  }
+  try {
+    const url = new URL(trimmed, "https://dummy.invalid");
+    const hostBase = url.origin === "https://dummy.invalid" ? trimmed : url.toString();
+    return hostBase.replace(/\/$/, "");
+  } catch {
+    return "";
+  }
+}
+
+function resolveRuntimeBase(): string {
+  if (typeof window === "undefined") return "";
+  const fromGlobal = sanitiseBase((window as any).__KISMET_API_BASE__ as string | undefined);
+  if (fromGlobal) return fromGlobal;
+  try {
+    const stored = sanitiseBase(window.localStorage.getItem(RUNTIME_STORAGE_KEY));
+    if (stored) return stored;
+  } catch {
+    // Ignore storage access issues (Safari private mode, etc.)
+  }
+  const meta = typeof document !== "undefined"
+    ? document.querySelector('meta[name="kismet-api-base"]')
+    : null;
+  if (meta) {
+    const content = sanitiseBase(meta.getAttribute("content"));
+    if (content) return content;
+  }
+  return "";
+}
+
+let apiBase = sanitiseBase(RAW_BASE) || resolveRuntimeBase();
 
 function apiUrl(path: string) {
-  return API_BASE ? API_BASE + path : path; // path already starts with /
+  return apiBase ? apiBase + path : path; // path already starts with /
+}
+
+export function buildApiUrl(path: string): string {
+  return apiUrl(path);
+}
+
+export function setApiBaseOverride(next: string | null, persist = true) {
+  const resolved = sanitiseBase(next);
+  apiBase = resolved;
+  if (typeof window !== "undefined" && persist) {
+    try {
+      if (resolved) {
+        window.localStorage.setItem(RUNTIME_STORAGE_KEY, resolved);
+      } else {
+        window.localStorage.removeItem(RUNTIME_STORAGE_KEY);
+      }
+    } catch {
+      // storage might be unavailable; ignore
+    }
+  }
 }
 
 async function doJson<T>(path: string, init: RequestInit): Promise<T> {
@@ -37,7 +102,7 @@ export async function apiSubmitRoll(roomId: string, userId: string, token: strin
   });
 }
 
-export function getApiBase(): string { return API_BASE; }
+export function getApiBase(): string { return apiBase; }
 
 export type AuthResponse = { token: string; expiresAt: number; profile: UserProfile };
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import type { WSFromClient, WSFromServer } from "../../../shared/src/types.js";
 import { Toast } from "./Toast";
 import { apiGetTurnServers } from "../net/api";
@@ -19,6 +19,27 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
   // Negotiation state flags (Perfect Negotiation simplified)
   const makingOfferRef = useRef(false);
   const ignoreOfferRef = useRef(false);
+  const offerAttemptedRef = useRef(false);
+  const remoteWantedRef = useRef(remoteWanted);
+
+  useEffect(() => {
+    remoteWantedRef.current = remoteWanted;
+  }, [remoteWanted]);
+
+  const tearDownPeer = useCallback((stopLocal = false) => {
+    if (pcRef.current) {
+      pcRef.current.ontrack = null;
+      pcRef.current.onicecandidate = null;
+      pcRef.current.onconnectionstatechange = null;
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    if (stopLocal && localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+    }
+    setConnected(false);
+  }, []);
 
   // Deterministic initiator: lower lexicographic userId (stable w/ generated ids)
   const isInitiator = useMemo(() => {
@@ -37,8 +58,14 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
           if (msg.p.opp) setOppId(msg.p.opp);
           // When an opponent joins, the new initiator should kick off the process.
           const newOppId = msg.p.opp;
-          if (newOppId && userId < newOppId) {
-            await startRTCPeer("offer");
+          if (newOppId && userId < newOppId && remoteWantedRef.current && !offerAttemptedRef.current) {
+            offerAttemptedRef.current = true;
+            try {
+              await startRTCPeer("offer");
+            } catch (err) {
+              offerAttemptedRef.current = false;
+              console.error("Error starting RTC offer on join:", err);
+            }
           }
         } else if (msg.t === "rtc_offer") {
           if (ignoreOfferRef.current) return;
@@ -73,6 +100,14 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
               console.error("Error adding ICE candidate:", err);
             }
           }
+        } else if (msg.t === "rtc_want") {
+          if (msg.p.from !== userId) {
+            setRemoteWanted(!!msg.p.enable);
+            if (!msg.p.enable) {
+              offerAttemptedRef.current = false;
+              tearDownPeer(true);
+            }
+          }
         }
       } catch (err) {
         console.error("Failed to process WebSocket message:", err);
@@ -81,7 +116,7 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
 
     ws.addEventListener("message", onMsg);
     return () => ws.removeEventListener("message", onMsg);
-  }, [ws, enabled, isInitiator, userId]);
+  }, [ws, enabled, isInitiator, userId, tearDownPeer]);
 
   // Effect to send the initial 'want' signal
   useEffect(() => {
@@ -110,12 +145,20 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
         }
       };
       pcRef.current.onconnectionstatechange = () => {
-        const isConnected = pcRef.current?.connectionState === "connected";
+        const state = pcRef.current?.connectionState;
+        const isConnected = state === "connected" || state === "completed";
         setConnected(isConnected);
         if (isConnected) {
           // Reset negotiation state on successful connection
           ignoreOfferRef.current = false;
           makingOfferRef.current = false;
+          offerAttemptedRef.current = false;
+        }
+        if (state === "failed" || state === "disconnected" || state === "closed") {
+          offerAttemptedRef.current = false;
+          if (!remoteWantedRef.current) {
+            tearDownPeer(false);
+          }
         }
       };
       pcRef.current.ontrack = (e) => {
@@ -202,19 +245,26 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
     }
   }
 
+  useEffect(() => {
+    if (!enabled || !ws || !oppId) return;
+    if (!remoteWanted || !isInitiator) return;
+    if (connected) return;
+    if (offerAttemptedRef.current) return;
+    offerAttemptedRef.current = true;
+    startRTCPeer("offer").catch((err) => {
+      offerAttemptedRef.current = false;
+      console.error("Failed to start RTC offer:", err);
+      Toast.push("error", "Live view negotiation failed. Retrying…");
+    });
+  }, [enabled, ws, oppId, remoteWanted, isInitiator, connected]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (pcRef.current) {
-        pcRef.current.close();
-        pcRef.current = null;
-      }
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-        localStreamRef.current = null;
-      }
+      offerAttemptedRef.current = false;
+      tearDownPeer(true);
     };
-  }, []);
+  }, [tearDownPeer]);
 
   return (
     <div className="rtc-panel card">
