@@ -356,8 +356,9 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
           if (ignoreOfferRef.current) return;
 
           const offerCollision = makingOfferRef.current || (pcRef.current && pcRef.current.signalingState !== "stable");
+          const isInitiatorNow = isInitiatorRef.current;
 
-          ignoreOfferRef.current = !isInitiator && offerCollision;
+          ignoreOfferRef.current = !isInitiatorNow && offerCollision;
           if (ignoreOfferRef.current) {
             return; // Non-initiator backs off
           }
@@ -405,7 +406,7 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
 
     currentWs.addEventListener("message", onMsg);
     return () => currentWs.removeEventListener("message", onMsg);
-  }, [enabled, isInitiator, startRTCPeer, attemptOffer, tearDownPeer, userId, ws]);
+  }, [enabled, startRTCPeer, attemptOffer, tearDownPeer, userId, ws]);
 
   // Cleanup on unmount
   useEffect(() => {
