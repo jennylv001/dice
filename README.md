@@ -2,6 +2,11 @@
 
 Cloudflare Workers + Durable Objects powered real-time dice verification and duel platform.
 
+## Purpose
+- Authenticate physical dice rolls in real time by pairing the browser capture app with edge verification services.
+- Provide duel matchmaking, proof sealing, and integrity scoring so remote players can trust competitive rolls.
+- Keep media ownership on-device—only cryptographic proofs and low-bandwidth audit frames are relayed through the worker.
+
 ## Packages
 - `kismet/app`: React + Vite frontend.
 - `kismet/worker`: Cloudflare Worker (API + signaling + TURN proxy) & Durable Object `RoomDO`.
