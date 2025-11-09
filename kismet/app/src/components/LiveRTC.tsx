@@ -22,62 +22,82 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
 
   // Deterministic initiator: lower lexicographic userId (stable w/ generated ids)
   const isInitiator = useMemo(() => {
-    if (!oppId) return true; // alone until opponent joins
+    if (!oppId) return false; // Cannot be initiator until opponent is known
     return userId < oppId;
   }, [userId, oppId]);
 
   useEffect(() => {
-    if (!ws) return;
+    if (!ws || !enabled) return;
+
     const onMsg = async (ev: MessageEvent) => {
       try {
         const msg = JSON.parse(ev.data as string) as WSFromServer;
+
         if (msg.t === "joined") {
           if (msg.p.opp) setOppId(msg.p.opp);
-        } else if (msg.t === "rtc_want" && enabled) {
-          if (msg.p.from && msg.p.from !== userId) setRemoteWanted(!!msg.p.enable);
-          // Only initiator starts offer when BOTH sides expressed want.
-          if (!pcRef.current && isInitiator && remoteWanted && enabled) {
-            try {
-              await startRTCPeer("offer");
-            } catch (err) {
-              Toast.push("error", "Live video setup failed. Check device permissions.");
-            }
+          // When an opponent joins, the new initiator should kick off the process.
+          const newOppId = msg.p.opp;
+          if (newOppId && userId < newOppId) {
+            await startRTCPeer("offer");
           }
         } else if (msg.t === "rtc_offer") {
-          if (!enabled) return;
-          const pc = pcRef.current;
-          const offerSDP = msg.p.sdp;
-          // Glare handling: if both created offers, keep the designated initiator's offer.
-          if (pc && pc.signalingState !== "stable") {
-            // If we're the initiator, ignore incoming simultaneous offer.
-            if (isInitiator) return; // ignore glare
+          if (ignoreOfferRef.current) return;
+
+          const offerCollision = makingOfferRef.current || (pcRef.current && pcRef.current.signalingState !== "stable");
+
+          ignoreOfferRef.current = !isInitiator && offerCollision;
+          if (ignoreOfferRef.current) {
+            return; // Non-initiator backs off
           }
+
           try {
-            await startRTCPeer("answer", offerSDP);
+            await startRTCPeer("answer", msg.p.sdp);
           } catch (err) {
-            Toast.push("error", "Could not answer live video offer. Retry in a moment.");
+            console.error("Error handling RTC offer:", err);
+            Toast.push("error", "Could not answer live video offer.");
           }
         } else if (msg.t === "rtc_answer") {
-          if (!enabled || !pcRef.current) return;
+          if (!pcRef.current) return;
           try {
             await pcRef.current.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: msg.p.sdp }));
-          } catch {}
+          } catch (err) {
+            console.error("Error setting remote answer:", err);
+          }
         } else if (msg.t === "rtc_ice") {
-          if (!enabled || !pcRef.current) return;
-          try { await pcRef.current.addIceCandidate(msg.p.candidate); } catch {}
+          if (!pcRef.current) return;
+          try {
+            await pcRef.current.addIceCandidate(msg.p.candidate);
+          } catch (err) {
+            // Ignore benign "no active transceiver" errors during setup
+            if (!err.message.includes("transceiver")) {
+              console.error("Error adding ICE candidate:", err);
+            }
+          }
         }
-      } catch {}
+      } catch (err) {
+        console.error("Failed to process WebSocket message:", err);
+      }
     };
+
     ws.addEventListener("message", onMsg);
     return () => ws.removeEventListener("message", onMsg);
-  }, [ws, enabled, isInitiator, remoteWanted, userId]);
+  }, [ws, enabled, isInitiator, userId]);
+
+  // Effect to send the initial 'want' signal
+  useEffect(() => {
+    if (ws && enabled) {
+      const m: WSFromClient = { t: "rtc_want", p: { enable: true } };
+      ws.send(JSON.stringify(m));
+    }
+  }, [ws, enabled]);
 
   async function startRTCPeer(role: "offer" | "answer", remoteSdp?: string) {
     if (!ws) return;
+
     if (!pcRef.current) {
-      let iceServers: RTCIceServer[] = FALLBACK_STUN as RTCIceServer[];
+      let iceServers: RTCIceServer[] = FALLBACK_STUN;
       try {
-  const turn = await apiGetTurnServers(roomId, userId, token);
+        const turn = await apiGetTurnServers(roomId, userId, token);
         if (turn.iceServers && turn.iceServers.length) iceServers = turn.iceServers;
       } catch {
         Toast.push("warn", "TURN unavailable, using public STUN only.");
@@ -89,56 +109,84 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
           ws.send(JSON.stringify(m));
         }
       };
-      pcRef.current.onconnectionstatechange = () => setConnected(pcRef.current?.connectionState === "connected");
-      pcRef.current.ontrack = (e) => { if (remoteRef.current) remoteRef.current.srcObject = e.streams[0]; };
+      pcRef.current.onconnectionstatechange = () => {
+        const isConnected = pcRef.current?.connectionState === "connected";
+        setConnected(isConnected);
+        if (isConnected) {
+          // Reset negotiation state on successful connection
+          ignoreOfferRef.current = false;
+          makingOfferRef.current = false;
+        }
+      };
+      pcRef.current.ontrack = (e) => {
+        if (remoteRef.current) remoteRef.current.srcObject = e.streams[0];
+      };
+
       if (!localStreamRef.current) {
         try {
-          // Reduce capture resolution & frame rate to lower GPU/CPU usage while preserving clarity.
           localStreamRef.current = await navigator.mediaDevices.getUserMedia({
             video: { width: 240, height: 135, frameRate: { ideal: 15, max: 15 } },
-            audio: wantAudio
+            audio: wantAudio,
           });
         } catch (err) {
           Toast.push("error", "Camera or mic permission denied. Enable access to join live.");
+          pcRef.current = null; // Clean up on failure
           return;
         }
       }
-      localStreamRef.current.getTracks().forEach(t => pcRef.current!.addTrack(t, localStreamRef.current!));
+      localStreamRef.current.getTracks().forEach((t) => pcRef.current!.addTrack(t, localStreamRef.current!));
       if (localRef.current) localRef.current.srcObject = localStreamRef.current;
     }
+
+    const pc = pcRef.current;
+
     if (role === "offer") {
       makingOfferRef.current = true;
       try {
-        const offer = await pcRef.current.createOffer({ offerToReceiveVideo: true, offerToReceiveAudio: false });
-        await pcRef.current.setLocalDescription(offer);
+        const offer = await pc.createOffer();
+        if (pc.signalingState !== "stable") return;
+        await pc.setLocalDescription(offer);
         const m: WSFromClient = { t: "rtc_offer", p: { sdp: offer.sdp! } };
         ws.send(JSON.stringify(m));
+      } catch (err) {
+        console.error("Failed to create offer:", err);
       } finally {
         makingOfferRef.current = false;
       }
-    } else {
-      // If already have an offer (glare) and we're initiator: ignore.
-      if (pcRef.current.signalingState === "have-local-offer" && isInitiator) return;
-      await pcRef.current.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: remoteSdp! }));
-      const answer = await pcRef.current.createAnswer();
-      await pcRef.current.setLocalDescription(answer);
-      const m: WSFromClient = { t: "rtc_answer", p: { sdp: answer.sdp! } };
-      ws.send(JSON.stringify(m));
+    } else if (role === "answer") {
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: remoteSdp! }));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        const m: WSFromClient = { t: "rtc_answer", p: { sdp: answer.sdp! } };
+        ws.send(JSON.stringify(m));
+      } catch (err) {
+        console.error("Failed to create answer:", err);
+      }
     }
   }
 
-  // Express desire for RTC; initiator waits until remote also wants.
+  // Cleanup on unmount
   useEffect(() => {
-    if (!ws || !enabled) return;
-    const m: WSFromClient = { t: "rtc_want", p: { enable: true } };
-    ws.send(JSON.stringify(m));
-  }, [ws, enabled]);
+    return () => {
+      if (pcRef.current) {
+        pcRef.current.close();
+        pcRef.current = null;
+      }
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+        localStreamRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="rtc-panel card">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h3>Live View</h3>
-        <div style={{ fontSize: 12, color: "#9fb2c7" }}>{connected ? "Connected" : "Connecting…"}</div>
+        <div style={{ fontSize: 12, color: connected ? "#33d17a" : "#9fb2c7" }}>
+          {connected ? "Connected" : "Connecting…"}
+        </div>
       </div>
       <div className="row" style={{ gap: 12 }}>
         <video
@@ -157,8 +205,8 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
           aria-label="Opponent live video feed"
         />
       </div>
-      <div style={{ color: "#9fb2c7", fontSize: 12, marginTop: 6 }}>
-        {connected ? (wantAudio ? "Video+Audio live" : "Video live") : (isInitiator ? "Waiting for opponent video intent" : "Awaiting offer")}
+      <div style={{ color: "#9fb2c7", fontSize: 12, marginTop: 6, minHeight: 16 }}>
+        {!connected && (isInitiator ? "Initiating connection..." : "Awaiting connection...")}
       </div>
     </div>
   );
