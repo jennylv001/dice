@@ -119,7 +119,32 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
         }
       };
       pcRef.current.ontrack = (e) => {
-        if (remoteRef.current) remoteRef.current.srcObject = e.streams[0];
+        const inbound = e.streams[0];
+        if (remoteRef.current) {
+          // Avoid redundant assignments which can trigger play race warnings.
+          if (remoteRef.current.srcObject !== inbound) {
+            remoteRef.current.srcObject = inbound;
+            // Safari/Chrome sometimes need an explicit play() after metadata.
+            const v = remoteRef.current;
+            const tryPlay = () => {
+              // Only attempt if paused and we have tracks.
+              if (v.paused && (inbound.getVideoTracks().length || inbound.getAudioTracks().length)) {
+                const p = v.play();
+                if (p && typeof p.then === "function") {
+                  p.catch(() => {
+                    // Swallow autoplay restrictions; user gesture will resolve.
+                  });
+                }
+              }
+            };
+            if (v.readyState >= 2) { // HAVE_CURRENT_DATA
+              tryPlay();
+            } else {
+              const onMeta = () => { v.removeEventListener("loadedmetadata", onMeta); tryPlay(); };
+              v.addEventListener("loadedmetadata", onMeta);
+            }
+          }
+        }
       };
 
       if (!localStreamRef.current) {
@@ -135,7 +160,18 @@ export default function LiveRTC({ roomId, userId, token, ws, wantAudio = true }:
         }
       }
       localStreamRef.current.getTracks().forEach((t) => pcRef.current!.addTrack(t, localStreamRef.current!));
-      if (localRef.current) localRef.current.srcObject = localStreamRef.current;
+      if (localRef.current && localRef.current.srcObject !== localStreamRef.current) {
+        localRef.current.srcObject = localStreamRef.current;
+        // Ensure local preview starts; muted so autoplay is allowed.
+        const lv = localRef.current;
+        const startLocal = () => {
+          if (lv.paused) {
+            const p = lv.play();
+            if (p && typeof p.then === "function") p.catch(() => {});
+          }
+        };
+        if (lv.readyState >= 2) startLocal(); else lv.addEventListener("loadedmetadata", () => startLocal(), { once: true });
+      }
     }
 
     const pc = pcRef.current;
